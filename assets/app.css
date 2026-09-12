@@ -1,0 +1,17 @@
+:root{--ink:#111;--bg:#ececec;--card:#fff;--line:#aaa;--muted:#555;--bad:#900;--good:#185b37}
+*{box-sizing:border-box}html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font:15px/1.45 Arial,sans-serif}
+main{max-width:1050px;margin:auto;padding:24px}.card{background:var(--card);border:1px solid var(--line);padding:20px;margin:14px 0}
+h1,h2,h3{font-family:Arial,sans-serif}.field{display:grid;gap:5px;margin:10px 0}.field input{padding:10px;border:1px solid #777;font:inherit}
+.btn{background:#111;color:#fff;border:0;padding:11px 16px;font-weight:800;cursor:pointer}.btn.secondary{background:#555}.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{padding:10px 0;border-top:1px solid #ddd}.small{font-size:12px;color:var(--muted)}.status{font-weight:700}.bad{color:var(--bad)}.good{color:var(--good)}
+code{display:block;word-break:break-all;background:#f5f5f5;border:1px solid #ccc;padding:9px;margin:8px 0}.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.warn{border:2px solid #111;background:#f7f7f7;padding:14px}.check{display:flex;gap:9px;align-items:flex-start;margin:12px 0}
+.sigbox{border:1px solid #111;background:#fff;width:100%;height:150px;touch-action:none}.viewer{display:none}
+.viewerbar{position:sticky;top:0;z-index:30;background:#111;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;gap:12px}
+.watermark{position:fixed;inset:0;pointer-events:none;z-index:20;overflow:hidden}.watermark span{position:absolute;left:8%;top:44%;transform:rotate(-28deg);font:700 22px Arial;color:rgba(0,0,0,.09);white-space:nowrap}
+.paper{max-width:850px;margin:18px auto;background:#fff;padding:46px 52px;box-shadow:0 1px 5px #999;font:14px/1.32 "Times New Roman",serif;user-select:none}
+.paper .dochead{display:flex;justify-content:space-between;border-bottom:1px solid #111;font:700 10px Arial;padding-bottom:5px}
+.paper h1{font:700 22px/1.2 Arial;text-align:center}.paper h2{font:700 16px Arial;border-bottom:2px solid #111;padding-bottom:3px;margin-top:22px}.paper h3{font:700 13px Arial;margin-bottom:4px}
+.paper p{text-align:justify}.paper .center{text-align:center!important}.paper .notice{border:1px solid #111;padding:10px;margin:18px 0}.paper .eq{position:relative;text-align:center;font:italic 17px "Times New Roman";padding:5px 55px 5px 20px}.paper .eq span{position:absolute;right:0;font:normal 13px "Times New Roman"}
+.paper table{width:100%;border-collapse:collapse;margin:8px 0 15px;font-size:12px}.paper th,.paper td{border:1px solid #333;padding:4px 6px}.paper th{background:#ddd;font-family:Arial}.paper .end{text-align:center!important;border-top:1px solid #111;padding-top:7px}
+@media print{html,body,*{display:none!important}}@media(max-width:760px){main{padding:8px}.paper{padding:24px 16px;font-size:13px}.paper h1{font-size:18px}.paper .eq{font-size:15px}.viewerbar{font-size:12px}}
