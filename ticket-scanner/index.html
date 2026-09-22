@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Crete-More Ticket Extractor</title>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <style>
     :root{--bg:#f4f6f8;--card:#fff;--ink:#17202a;--muted:#65717d;--line:#d9e0e6;--accent:#202b38;--good:#1e7b4d;--warn:#a55c00;--bad:#b42318;--soft:#eef2f6}
@@ -496,30 +496,149 @@ function savePendingDefinition(){
 function cropNormalized(dataUrl,r){
   return new Promise(async(resolve,reject)=>{try{const im=new Image();im.src=dataUrl;await im.decode();const x=Math.round(r.x1*im.naturalWidth),y=Math.round(r.y1*im.naturalHeight),w=Math.max(1,Math.round((r.x2-r.x1)*im.naturalWidth)),h=Math.max(1,Math.round((r.y2-r.y1)*im.naturalHeight));const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(im,x,y,w,h,0,0,w,h);resolve(cv.toDataURL('image/png',0.98))}catch(e){reject(e)}})
 }
-function parseAreaValue(key,text){
-  const cleaned=normalizeText(text);
-  if(['coarse_name','fine_name','cement_name','scm1_name','water_name','wr_name','air_name','agg3_name','agg4_name','scm2_name','scm3_name','admix3_name','admix4_name','admix5_name','mix_code','ticket'].includes(key)){
-    if(key==='ticket'){const m=cleaned.match(/\b\d{3,12}\b/);return m?m[0]:cleaned.split('\n')[0]?.trim()||''}
-    return cleaned.replace(/\n+/g,' ').trim().slice(0,80);
+const OCR_TEXT_KEYS=new Set(['coarse_name','fine_name','cement_name','scm1_name','water_name','wr_name','air_name','agg3_name','agg4_name','scm2_name','scm3_name','admix3_name','admix4_name','admix5_name','mix_code']);
+function fieldOcrRule(key){
+  if(key==='ticket')return{kind:'ticket',min:100,max:999999999999,psm:'SINGLE_WORD',whitelist:'0123456789'};
+  if(OCR_TEXT_KEYS.has(key))return{kind:'text',psm:'SINGLE_LINE',minConfidence:58};
+  if(key==='load_size')return{kind:'number',min:0.1,max:30,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
+  if(key==='wc_ratio_report')return{kind:'number',min:0.1,max:1.2,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
+  if(key==='loaded_weight')return{kind:'number',min:1000,max:150000,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
+  if(/moisture$/.test(key))return{kind:'number',min:-20,max:20,psm:'SINGLE_LINE',whitelist:'0123456789.,-%'};
+  if(/_water$/.test(key)||key==='total_water')return{kind:'number',min:-20000,max:20000,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
+  if(/batched$/.test(key)||['rock_batched','sand_batched','flyash_batched','wr','air','admix3','admix4','admix5'].includes(key))
+    return{kind:'number',min:0,max:150000,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
+  return{kind:'number',min:-150000,max:150000,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
+}
+function normalizeNumericOcr(s){
+  return String(s||'')
+    .replace(/[OoQ]/g,'0')
+    .replace(/[Il|]/g,'1')
+    .replace(/[–—]/g,'-')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+function numericCandidates(text,key){
+  const rule=fieldOcrRule(key),clean=normalizeNumericOcr(text);
+  const tokens=clean.match(/[-+]?\d[\d,]*(?:\.\d+)?\s*%?/g)||[];
+  const out=[];
+  for(const raw0 of tokens){
+    const raw=raw0.trim(),hasDot=raw.includes('.'),hasPct=raw.includes('%');
+    const compact=raw.replace(/,/g,'').replace('%','');
+    const direct=Number(compact);
+    const add=(v,tag)=>{if(Number.isFinite(v)&&v>=rule.min&&v<=rule.max&&!out.some(x=>x.value===v&&x.tag===tag))out.push({value:v,raw,tag,hasDot,hasPct})};
+    add(direct,'direct');
+    if(!hasDot&&Number.isFinite(direct)){
+      if(/moisture$/.test(key)){
+        if(Math.abs(direct)>20){add(direct/10,'decimal-repair-1');add(direct/100,'decimal-repair-2')}
+      }else if(key==='wc_ratio_report'){
+        add(direct/100,'wc-decimal-repair');add(direct/10,'wc-decimal-repair-1');
+      }else if(key==='load_size'&&direct>30){
+        add(direct/10,'volume-decimal-repair');add(direct/100,'volume-decimal-repair-2');
+      }
+    }
   }
-  const nums=numTokens(cleaned);if(!nums.length)return '';
-  let v=nums[nums.length-1].value;if(/moisture/.test(key)&&v<=0.2)v*=100;return v;
+  return out;
+}
+function chooseNumericCandidate(text,key){
+  const rule=fieldOcrRule(key),c=numericCandidates(text,key);
+  if(!c.length)return null;
+  let best=c[0],bestScore=-1e9;
+  for(const x of c){
+    let score=0;
+    if(x.tag==='direct')score+=12;
+    if(x.hasDot)score+=10;
+    if(x.hasPct&&/moisture$/.test(key))score+=5;
+    if(/moisture$/.test(key)&&Math.abs(x.value)<=15)score+=3;
+    if(key==='wc_ratio_report'&&x.value>=0.25&&x.value<=0.75)score+=8;
+    if(key==='load_size'&&x.value>=1&&x.value<=15)score+=5;
+    if(score>bestScore){best=x;bestScore=score}
+  }
+  return best;
+}
+function parseAreaValue(key,text){
+  const rule=fieldOcrRule(key),cleaned=normalizeText(text);
+  if(rule.kind==='ticket'){
+    const fixed=normalizeNumericOcr(cleaned),groups=fixed.match(/\d{3,12}/g)||[];
+    if(!groups.length)return null;
+    groups.sort((a,b)=>b.length-a.length);return{value:groups[0],raw:cleaned,valid:true,repair:'ticket'};
+  }
+  if(rule.kind==='text'){
+    const v=cleaned.replace(/\n+/g,' ').replace(/\s+/g,' ').trim().slice(0,80);
+    return v?{value:v,raw:cleaned,valid:true,repair:'text'}:null;
+  }
+  const candidate=chooseNumericCandidate(cleaned,key);
+  return candidate?{value:candidate.value,raw:cleaned,valid:true,repair:candidate.tag}:null;
+}
+async function prepareOcrCrop(dataUrl,variant='gray'){
+  const im=new Image();im.src=dataUrl;await im.decode();
+  const srcW=im.naturalWidth,srcH=im.naturalHeight;
+  const scale=Math.min(5,Math.max(2,110/Math.max(1,srcH)));
+  const border=24,w=Math.max(1,Math.round(srcW*scale)),h=Math.max(1,Math.round(srcH*scale));
+  const cv=document.createElement('canvas');cv.width=w+border*2;cv.height=h+border*2;
+  const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);ctx.drawImage(im,border,border,w,h);
+  const id=ctx.getImageData(0,0,cv.width,cv.height),d=id.data;
+  for(let i=0;i<d.length;i+=4){
+    let g=.299*d[i]+.587*d[i+1]+.114*d[i+2];
+    if(variant==='threshold')g=g<178?0:255;
+    else g=Math.max(0,Math.min(255,(g-128)*1.55+128));
+    d[i]=d[i+1]=d[i+2]=g;
+  }
+  ctx.putImageData(id,0,0);return cv.toDataURL('image/png',1);
+}
+async function configureWorkerForField(worker,key){
+  const rule=fieldOcrRule(key),psm=(Tesseract.PSM&&Tesseract.PSM[rule.psm])||'7';
+  const params={preserve_interword_spaces:rule.kind==='text'?'1':'0',tessedit_pageseg_mode:psm,user_defined_dpi:'300',tessedit_char_whitelist:rule.whitelist||''};
+  await worker.setParameters(params);
+}
+function scoreOcrAttempt(key,attempt){
+  const rule=fieldOcrRule(key),parsed=attempt.parsed;if(!parsed)return-1e9;
+  let score=Number(attempt.confidence||0);
+  if(rule.kind==='text'){
+    const len=String(parsed.value||'').length;if(len>=2)score+=8;if(len>50)score-=8;
+  }else{
+    if(parsed.repair==='direct')score+=12;
+    if(parsed.repair&&parsed.repair.includes('repair'))score-=4;
+  }
+  if(attempt.variant==='gray')score+=2;
+  return score;
+}
+async function recognizeDefinedField(worker,key,crop){
+  await configureWorkerForField(worker,key);
+  const attempts=[];
+  const gray=await prepareOcrCrop(crop,'gray');
+  const r1=await worker.recognize(gray),p1=parseAreaValue(key,r1.data.text||'');
+  attempts.push({variant:'gray',text:r1.data.text||'',confidence:Number(r1.data.confidence||0),parsed:p1});
+  const minConf=fieldOcrRule(key).kind==='text'?68:78;
+  if(!p1||Number(r1.data.confidence||0)<minConf){
+    const bw=await prepareOcrCrop(crop,'threshold');
+    const r2=await worker.recognize(bw),p2=parseAreaValue(key,r2.data.text||'');
+    attempts.push({variant:'threshold',text:r2.data.text||'',confidence:Number(r2.data.confidence||0),parsed:p2});
+  }
+  attempts.sort((a,b)=>scoreOcrAttempt(key,b)-scoreOcrAttempt(key,a));
+  const best=attempts[0];
+  if(!best?.parsed)return{value:'',confidence:0,rawText:attempts.map(a=>a.text).join(' | '),source:'Defined area · no valid value',reviewRequired:true};
+  const conf=Math.round(best.confidence||0),reviewRequired=conf<(fieldOcrRule(key).kind==='text'?65:72)||best.parsed.repair!=='direct'&&best.parsed.repair!=='text'&&best.parsed.repair!=='ticket';
+  return{value:best.parsed.value,confidence:conf,rawText:best.text,source:'Defined area'+(best.parsed.repair&&best.parsed.repair!=='direct'?' · '+best.parsed.repair:''),reviewRequired};
 }
 async function extractWithSavedAreas(dataUrl){
-  if(!(activeLayout.regions?.length)||!Object.keys(activeLayout.material_rows||{}).length)throw Error('No defined areas in selected layout.');
-  const worker=await ensureOcrWorker(),parsed={};
+  if(!layoutHasDefinitions())throw Error('No defined areas in selected layout.');
+  const worker=await ensureOcrWorker(),parsed={};let reviewCount=0,total=0;
   const recognizeRect=async(key,r)=>{
-    const crop=await cropNormalized(dataUrl,r),res=await worker.recognize(crop),txt=res.data.text||'',value=parseAreaValue(key,txt);
-    if(value!==''&&value!=null)parsed[key]={value,source:'Defined area: '+key};
+    total++;$('photoStatus').textContent='Defined-layout OCR: '+key+' ('+total+')…';
+    const crop=await cropNormalized(dataUrl,r),field=await recognizeDefinedField(worker,key,crop);
+    if(field.value!==''&&field.value!=null){parsed[key]=field;if(field.reviewRequired)reviewCount++}
+    else reviewCount++;
   };
   for(const r of activeLayout.regions||[])await recognizeRect(r.key,r.rect);
   for(const [mat,row] of Object.entries(activeLayout.material_rows||{})){
     if(row?.y1==null)continue;const map=MATERIAL_FIELD_KEYS[mat]||{};
-    for(const [slot,col] of Object.entries(row.columns||{})){const key=map[slot];if(!key)continue;await recognizeRect(key,{x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2})}
+    for(const [slot,col] of Object.entries(row.columns||{})){
+      const key=map[slot];if(!key)continue;
+      await recognizeRect(key,{x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2});
+    }
   }
-  return{text:'Area-defined extraction',parsed};
+  return{text:'Area-defined extraction',parsed,reviewCount};
 }
-
 
 function renderFields(){
   const box = $('fields'); box.innerHTML='';
@@ -534,10 +653,16 @@ function renderFields(){
   });
 }
 
-function setField(key,value,source=''){
+function setField(key,value,source='',confidence=null,rawText=''){
   const el=$('f_'+key); if(!el || value===undefined || value===null || value==='') return;
   el.value=String(value).replace(/,/g,'');
-  const h=$('h_'+key); if(h){h.textContent=source?`Detected from: ${source}`:'Detected'; h.classList.add('ok');}
+  const h=$('h_'+key);
+  if(h){
+    const conf=confidence==null?'':(' · '+Math.round(Number(conf))+'%');
+    const raw=rawText?(' · OCR: '+String(rawText).replace(/\s+/g,' ').trim().slice(0,70)):'';
+    h.textContent=(source?source:'Detected')+conf+raw;
+    h.className='hint '+(confidence!=null&&Number(confidence)<72?'warning':'ok');
+  }
 }
 function clearDetectedHints(){FIELD_DEFS.forEach(d=>{const h=$('h_'+d.key);if(h){h.textContent='';h.className='hint';}})}
 function clearForm(){
@@ -583,7 +708,7 @@ function parseMoisture(lines,name){
   for(const line of lines){
     if(hasAny(line,aliases) && /moist|moisture|%mc|mc\b/i.test(line)){
       let nums=numTokens(line).filter(n=>n.value>=0 && n.value<=30);
-      if(nums.length){const n=nums[nums.length-1];return {value:n.pct?n.value:(n.value<=0.2?n.value*100:n.value),source:line};}
+      if(nums.length){const n=nums[nums.length-1];return {value:n.value,source:line};}
     }
   }
   return null;
@@ -649,7 +774,7 @@ function parseTicketText(text){
 }
 function applyParsed(parsed){
   clearDetectedHints(); lastDetected=parsed;
-  Object.entries(parsed).forEach(([k,o])=>setField(k,o.value,o.source));
+  Object.entries(parsed).forEach(([k,o])=>setField(k,o.value,o.source,o.confidence,o.rawText));
   $('queueBtn').disabled=false;
 }
 
@@ -714,9 +839,12 @@ async function recognizeTicketImage(dataUrl){
   return {text,parsed:parseTicketText(text)};
 }
 function ticketFromParsed(parsed){
-  const out={};
-  FIELD_DEFS.forEach(d=>{const x=parsed[d.key];out[d.key]=x&&x.value!==undefined&&x.value!==null?x.value:'';});
-  return out;
+  const out={},meta={};let review=0;
+  FIELD_DEFS.forEach(d=>{
+    const x=parsed[d.key];out[d.key]=x&&x.value!==undefined&&x.value!==null?x.value:'';
+    if(x){meta[d.key]={confidence:x.confidence??null,rawText:x.rawText??'',source:x.source??'',reviewRequired:!!x.reviewRequired};if(x.reviewRequired)review++}
+  });
+  out._fieldMeta=meta;out._reviewRequired=review;return out;
 }
 function layoutHasDefinitions(){
   return (activeLayout.regions?.length||0)>0 || Object.values(activeLayout.material_rows||{}).some(r=>r&&r.y1!=null&&Object.keys(r.columns||{}).length);
@@ -818,7 +946,7 @@ async function runOCR(){
     const result=await recognizeTicketImage(photoDataUrl);
     $('ocrText').value=result.text; applyParsed(result.parsed);
     if(pdfDoc)pdfPageResults.set(pdfPageNumber,result);
-    $('photoStatus').innerHTML='<span class="ok">OCR complete'+(pdfDoc?' for PDF page '+pdfPageNumber:'')+'. Review detected values below.</span>';
+    const rc=Object.values(result.parsed||{}).filter(x=>x.reviewRequired).length;$('photoStatus').innerHTML='<span class="'+(rc?'warning':'ok')+'">OCR complete'+(pdfDoc?' for PDF page '+pdfPageNumber:'')+(layoutHasDefinitions()?' using defined layout':'')+'. '+(rc?rc+' field(s) need review.':'Review detected values below.')+'</span>';
   }catch(e){console.error(e);$('photoStatus').innerHTML='<span class="error">OCR failed: '+escapeHtml(e.message||String(e))+'</span>';}
   finally{$('extractBtn').disabled=false;$('ocrProgress').style.display='none';}
 }
@@ -829,13 +957,14 @@ function formTicket(){
 function validateTicket(t){const errs=[];if(!t.ticket)errs.push('Ticket # is blank');if(t.load_size!==''&&!(Number(t.load_size)>0))errs.push('Load Size must be greater than zero');return errs;}
 async function addQueue(){
   const t=formTicket(),errs=validateTicket(t); if(errs.length&&!confirm(errs.join('\n')+'\n\nAdd anyway?')) return;
+  if(lastDetected&&Object.keys(lastDetected).length){t._fieldMeta={};let rc=0;for(const [k,x] of Object.entries(lastDetected)){t._fieldMeta[k]={confidence:x.confidence??null,rawText:x.rawText??'',source:x.source??'',reviewRequired:!!x.reviewRequired};if(x.reviewRequired)rc++}t._reviewRequired=rc}
   await attachSourceToTicket(t,photoDataUrl,{kind:pdfDoc?'pdf_page':'image',page:pdfDoc?pdfPageNumber:null,fileName:ticketSourceFile?.name||''});
   if(layoutHasDefinitions()){t._layoutId=activeLayout.id||null;t._layoutName=activeLayout.name||'';t._extractionMode='defined_layout';t._extractedAt=new Date().toISOString()}
   queue.push(t); persistQueue(); renderQueue(); clearForm(); $('ocrText').value='';
 }
 function renderQueue(){
   const b=$('queueBody'); b.innerHTML=''; if(!queue.length){b.innerHTML='<tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr>';}
-  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><strong>${esc(t.ticket)}</strong><div class="selectorHelp">${t._extractionMode==='defined_layout'?'Defined layout'+(t._layoutName?' · '+esc(t._layoutName):''):'Generic OCR'}</div></td><td>${esc(t.load_size)}</td><td>${esc(t.coarse_name)} · ${esc(t.rock_batched)} · ${esc(t.rock_moisture)}%</td><td>${esc(t.fine_name)} · ${esc(t.sand_batched)} · ${esc(t.sand_moisture)}%</td><td>${esc(t.cement_name)} · ${esc(t.cement_batched)}</td><td>${esc(t.scm1_name)} · ${esc(t.flyash_batched)}</td><td>${esc(t.water_batched)}</td><td>${esc(t.wc_ratio_report)}</td><td>${esc(t.mix_code)}</td><td><button class="secondary" data-layout="${i}" style="padding:6px 8px">Define Layout</button> <button class="secondary" data-edit="${i}" style="padding:6px 8px">Edit</button> <button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
+  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><strong>${esc(t.ticket)}</strong><div class="selectorHelp">${t._extractionMode==='defined_layout'?'Defined layout'+(t._layoutName?' · '+esc(t._layoutName):''):'Generic OCR'}${t._reviewRequired?' · '+t._reviewRequired+' field(s) review':''}</div></td><td>${esc(t.load_size)}</td><td>${esc(t.coarse_name)} · ${esc(t.rock_batched)} · ${esc(t.rock_moisture)}%</td><td>${esc(t.fine_name)} · ${esc(t.sand_batched)} · ${esc(t.sand_moisture)}%</td><td>${esc(t.cement_name)} · ${esc(t.cement_batched)}</td><td>${esc(t.scm1_name)} · ${esc(t.flyash_batched)}</td><td>${esc(t.water_batched)}</td><td>${esc(t.wc_ratio_report)}</td><td>${esc(t.mix_code)}</td><td><button class="secondary" data-layout="${i}" style="padding:6px 8px">Define Layout</button> <button class="secondary" data-edit="${i}" style="padding:6px 8px">Edit</button> <button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
   b.querySelectorAll('[data-layout]').forEach(x=>x.onclick=()=>defineLayoutFromQueued(Number(x.dataset.layout)));
   b.querySelectorAll('[data-edit]').forEach(x=>x.onclick=()=>editQueuedTicket(Number(x.dataset.edit)));
   b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=async()=>{const i=Number(x.dataset.rm),t=queue[i];queue.splice(i,1);persistQueue();renderQueue();await deleteQueueSource(t?._sourceId).catch(()=>{})});
