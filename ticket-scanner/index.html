@@ -608,9 +608,11 @@ async function recognizeDefinedField(worker,key,crop){
   const gray=await prepareOcrCrop(crop,'gray');
   const r1=await worker.recognize(gray),p1=parseAreaValue(key,r1.data.text||'');
   attempts.push({variant:'gray',text:r1.data.text||'',confidence:Number(r1.data.confidence||0),parsed:p1});
-  const minConf=fieldOcrRule(key).kind==='text'?68:78;
+  const rule=fieldOcrRule(key),minConf=rule.kind==='text'?68:78;
   if(!p1||Number(r1.data.confidence||0)<minConf){
     const bw=await prepareOcrCrop(crop,'threshold');
+    const secondPsm=rule.kind==='text'?((Tesseract.PSM&&Tesseract.PSM.SINGLE_BLOCK)||'6'):((Tesseract.PSM&&Tesseract.PSM.SINGLE_WORD)||'8');
+    await worker.setParameters({tessedit_pageseg_mode:secondPsm,preserve_interword_spaces:rule.kind==='text'?'1':'0',tessedit_char_whitelist:rule.whitelist||'',user_defined_dpi:'300'});
     const r2=await worker.recognize(bw),p2=parseAreaValue(key,r2.data.text||'');
     attempts.push({variant:'threshold',text:r2.data.text||'',confidence:Number(r2.data.confidence||0),parsed:p2});
   }
@@ -656,10 +658,10 @@ async function recognizeMaterialRow(worker,dataUrl,row,mat){
   const res=await worker.recognize(prepared,{}, {text:true,tsv:true});
   const words=parseTsvWords(res.data.tsv),map=MATERIAL_FIELD_KEYS[mat]||{},results={};
   if(!words.length)return results;
-  const maxX=Math.max(...words.map(w=>w.left+w.width),1);
+  const prepImg=new Image();prepImg.src=prepared;await prepImg.decode();const fullW=Math.max(1,prepImg.naturalWidth);
   for(const [slot,col] of Object.entries(row.columns||{})){
     const key=map[slot];if(!key)continue;
-    const selected=words.filter(w=>{const cx=(w.left+w.width/2)/maxX;return cx>=Math.max(0,col.x1-.015)&&cx<=Math.min(1,col.x2+.015)});
+    const selected=words.filter(w=>{const cx=(w.left+w.width/2)/fullW;return cx>=Math.max(0,col.x1-.02)&&cx<=Math.min(1,col.x2+.02)});
     if(!selected.length)continue;
     const text=selected.map(w=>w.text).join(' '),parsed=parseAreaValue(key,text);
     if(!parsed)continue;
