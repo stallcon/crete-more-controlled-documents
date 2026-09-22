@@ -44,11 +44,11 @@
 <main>
   <div class="grid">
     <section class="card">
-      <div class="step">Step 1</div><h2>Load Ticket Analyzer workbook</h2>
-      <label class="drop" for="workbookFile"><strong>Select Ticket Analyzer.xlsx</strong><br><span style="color:var(--muted);font-size:12px">The workbook stays in your browser.</span></label>
+      <div class="step">Step 1</div><h2>Select Ticket Importer workbook</h2>
+      <label class="drop" for="workbookFile"><strong>Select Ticket Importer.xlsx</strong><br><span style="color:var(--muted);font-size:12px">Saved locally on this device and reused for future exports.</span></label>
       <input id="workbookFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-      <div id="workbookStatus" class="status">No workbook loaded.</div>
-      <div class="row" style="margin-top:10px"><label style="font-size:12px;color:var(--muted)">Worksheet</label><select id="sheetSelect" disabled style="padding:8px;border:1px solid var(--line);border-radius:7px;min-width:180px"></select></div>
+      <div id="workbookStatus" class="status">No Ticket Importer template saved on this device.</div>
+      
     </section>
     <section class="card">
       <div class="step">Step 2</div><h2>Photograph or upload a ticket</h2>
@@ -71,11 +71,11 @@
 
   <section class="card" style="margin-top:18px">
     <div class="step">Step 4</div><h2>Ticket queue and Excel export</h2>
-    <div class="tableWrap"><table><thead><tr><th>#</th><th>Placement</th><th>Ticket</th><th>Load</th><th>Rock Req / Batched</th><th>Sand Req / Batched</th><th>Cement Req / Batched</th><th>Water Req / Batched</th><th>Moisture R/S</th><th>W/C</th><th></th></tr></thead><tbody id="queueBody"><tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr></tbody></table></div>
-    <details><summary>Workbook settings</summary><div class="advanced"><label>Data start row<input id="dataStartRow" type="number" min="1" value="4"></label><label>Formula/template row<input id="templateRow" type="number" min="1" value="4"></label><label>Copy formulas to new rows<select id="copyFormulas"><option value="yes" selected>Yes</option><option value="no">No</option></select></label><label>Target row mode<select id="rowMode"><option value="auto" selected>First empty Ticket # row</option><option value="append">After last Ticket # row</option></select></label></div></details>
-    <div class="row" style="margin-top:14px"><button id="exportBtn" disabled>Download updated Excel</button><button id="clearQueueBtn" class="danger" disabled>Clear queue</button></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>Ticket</th><th>Volume</th><th>Coarse</th><th>Fine</th><th>Cement</th><th>SCM #1</th><th>Water</th><th>W/C</th><th>Mix</th><th></th></tr></thead><tbody id="queueBody"><tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr></tbody></table></div>
+    <div class="notice" style="margin-top:12px">Each export uses a clean copy of your saved <b>Ticket Importer.xlsx</b> template. The <b>Tickets</b> sheet keeps row 1 headers, removes all prior ticket rows, writes only this queue starting at row 2, downloads the workbook, then clears the queue.</div>
+    <div class="row" style="margin-top:14px"><button id="exportBtn" disabled>Export Ticket Importer.xlsx</button><button id="clearQueueBtn" class="danger" disabled>Clear queue</button></div>
     <div id="exportStatus" class="status"></div>
-    <div class="footerNote">Mapped input columns: A–J, L, N, P, R–T, V–Z. Calculated columns K, M, O, Q, U and AA–AE are not overwritten. When formula copying is enabled, the app uses the formula/template row as the pattern for a newly populated row.</div>
+    <div class="footerNote">Export target: the workbook's <b>Tickets</b> sheet (A:BJ). Moisture values are exported as decimal fractions (for example, 0.50% is written as 0.00500). All other workbook sheets and formulas remain in place.</div>
   </section>
 </main>
 <script>
@@ -129,29 +129,70 @@ document.addEventListener('DOMContentLoaded',async()=>{
 });
 
 const FIELD_DEFS = [
-  {key:'placement', label:'Placement #', col:'A', type:'text', aliases:['placement','pour','placement #']},
-  {key:'ticket', label:'Ticket #', col:'B', type:'text', aliases:['ticket','ticket #','batch ticket','load ticket']},
-  {key:'issues', label:'Issues?', col:'C', type:'text', aliases:['issues','issue','notes']},
-  {key:'load_size', label:'Load Size (yds)', col:'D', type:'number', aliases:['load size','quantity','qty','yards','yds','cubic yards','cu yd']},
-  {key:'rock_required', label:'Rock Required (lbs)', col:'E', type:'number'},
-  {key:'sand_required', label:'Sand Required (lbs)', col:'F', type:'number'},
-  {key:'cement_required', label:'Cement Required (lbs)', col:'G', type:'number'},
-  {key:'flyash_required', label:'Fly Ash Required (lbs)', col:'H', type:'number'},
-  {key:'water_required', label:'Water Required (gal)', col:'I', type:'number'},
-  {key:'rock_batched', label:'Rock Batched (lbs)', col:'J', type:'number'},
-  {key:'sand_batched', label:'Sand Batched (lbs)', col:'L', type:'number'},
-  {key:'cement_batched', label:'Cement Batched (lbs)', col:'N', type:'number'},
-  {key:'flyash_batched', label:'Fly Ash Batched (lbs)', col:'P', type:'number'},
-  {key:'water_batched', label:'Water Batched (gal)', col:'R', type:'number'},
-  {key:'rock_moisture', label:'Rock Moisture (%)', col:'S', type:'number'},
-  {key:'sand_moisture', label:'Sand Moisture (%)', col:'T', type:'number'},
-  {key:'wr', label:'WR (oz)', col:'V', type:'number'},
-  {key:'air', label:'Air (oz)', col:'W', type:'number'},
-  {key:'admix2', label:'Admix 2 (oz)', col:'X', type:'number'},
-  {key:'tested_psi', label:'Tested PSI', col:'Y', type:'number'},
-  {key:'wc_ratio_report', label:'W/C Ratio Report', col:'Z', type:'number'}
+  {key:'ticket', label:'Ticket #', type:'text'},
+  {key:'load_size', label:'Volume Delivered', type:'number'},
+  {key:'coarse_name', label:'Coarse Aggregate Name', type:'text'},
+  {key:'rock_batched', label:'Coarse Aggregate Batched Qty', type:'number'},
+  {key:'rock_moisture', label:'Coarse Aggregate Moisture (%)', type:'number'},
+  {key:'fine_name', label:'Fine Aggregate Name', type:'text'},
+  {key:'sand_batched', label:'Fine Aggregate Batched Qty', type:'number'},
+  {key:'sand_moisture', label:'Fine Aggregate Moisture (%)', type:'number'},
+  {key:'cement_name', label:'Cement Name', type:'text'},
+  {key:'cement_batched', label:'Cement Batched Qty', type:'number'},
+  {key:'scm1_name', label:'SCM #1 Name', type:'text'},
+  {key:'flyash_batched', label:'SCM #1 Batched Qty', type:'number'},
+  {key:'water_name', label:'Water Name', type:'text'},
+  {key:'water_batched', label:'Water Batched Qty', type:'number'},
+  {key:'total_water', label:'Total Water', type:'number'},
+  {key:'wr_name', label:'Water Reducer Name', type:'text'},
+  {key:'wr', label:'Water Reducer Batched Qty', type:'number'},
+  {key:'air_name', label:'Air Entrainment Name', type:'text'},
+  {key:'air', label:'Air Entrainment Batched Qty', type:'number'},
+  {key:'wc_ratio_report', label:'Water/Cement Ratio', type:'number'},
+  {key:'loaded_weight', label:'Loaded Weight', type:'number'},
+  {key:'agg3_name', label:'Aggregate #3 Name', type:'text'},
+  {key:'agg3_batched', label:'Aggregate #3 Batched Qty', type:'number'},
+  {key:'agg3_moisture', label:'Aggregate #3 Moisture (%)', type:'number'},
+  {key:'agg4_name', label:'Aggregate #4 Name', type:'text'},
+  {key:'agg4_batched', label:'Aggregate #4 Batched Qty', type:'number'},
+  {key:'agg4_moisture', label:'Aggregate #4 Moisture (%)', type:'number'},
+  {key:'scm2_name', label:'SCM #2 Name', type:'text'},
+  {key:'scm2_batched', label:'SCM #2 Batched Qty', type:'number'},
+  {key:'scm2_moisture', label:'SCM #2 Moisture (%)', type:'number'},
+  {key:'scm3_name', label:'SCM #3 Name', type:'text'},
+  {key:'scm3_batched', label:'SCM #3 Batched Qty', type:'number'},
+  {key:'scm3_moisture', label:'SCM #3 Moisture (%)', type:'number'},
+  {key:'admix3_name', label:'Admix #3 Name', type:'text'},
+  {key:'admix3', label:'Admix #3 Batched Qty', type:'number'},
+  {key:'admix3_moisture', label:'Admix #3 Moisture (%)', type:'number'},
+  {key:'admix4_name', label:'Admix #4 Name', type:'text'},
+  {key:'admix4', label:'Admix #4 Batched Qty', type:'number'},
+  {key:'admix4_moisture', label:'Admix #4 Moisture (%)', type:'number'},
+  {key:'admix5_name', label:'Admix #5 Name', type:'text'},
+  {key:'admix5', label:'Admix #5 Batched Qty', type:'number'},
+  {key:'admix5_moisture', label:'Admix #5 Moisture (%)', type:'number'},
+  {key:'mix_code', label:'Mix Code', type:'text'}
 ];
-const FORMULA_COLS = ['K','M','O','Q','U','AA','AB','AC','AD','AE'];
+const TICKET_HEADERS = ["Ticket #","Volume delivered","Coarse aggregate Name","Coarse aggregate Batched Qty","Coarse aggregate Moisture","Coarse aggregate Water","Fine Aggregate Name","Fine Aggregate Batched Qty","Fine Aggregate Moisture","Fine Aggregate Water","Cement Name","Cement Batched Qty","Cement Moisture","Cement Water","SCM #1 Name","SCM #1 Batched Qty","SCM #1 Moisture","SCM #1 Water","Water Name","Water Batched Qty","Water Moisture","Water Water","Total Water","Water Reducer Name","Water Reducer Batched Qty","Water Reducer Moisture","Water Reducer Water","Air Entrainment Name","Air Entrainment Batched Qty","Air Entrainment Moisture","Air Entrainment Water","Water/Cement Ratio","Loaded Weight","Aggregate #3 Name","Aggregate #3 Batched Qty","Aggregate #3 Moisture","Aggregate #3 Water","Aggregate #4 Name","Aggregate #4 Batched Qty","Aggregate #4 Moisture","Aggregate #4 Water","SCM #2 Name","SCM #2 Batched Qty","SCM #2 Moisture","SCM #2 Water","SCM #3 Name","SCM #3 Batched Qty","SCM #3 Moisture","SCM #3 Water","Admix #3 Name","Admix #3 Batched Qty","Admix #3 Moisture","Admix #3 Water","Admix #4 Name","Admix #4 Batched Qty","Admix #4 Moisture","Admix #4 Water","Admix #5 Name","Admix #5 Batched Qty","Admix #5 Moisture","Admix #5 Water","Mix Code"];
+const EXPORT_MAP = {
+  "Ticket #":['ticket','text'],"Volume delivered":['load_size','number'],
+  "Coarse aggregate Name":['coarse_name','text'],"Coarse aggregate Batched Qty":['rock_batched','number'],"Coarse aggregate Moisture":['rock_moisture','moisture'],
+  "Fine Aggregate Name":['fine_name','text'],"Fine Aggregate Batched Qty":['sand_batched','number'],"Fine Aggregate Moisture":['sand_moisture','moisture'],
+  "Cement Name":['cement_name','text'],"Cement Batched Qty":['cement_batched','number'],
+  "SCM #1 Name":['scm1_name','text'],"SCM #1 Batched Qty":['flyash_batched','number'],
+  "Water Name":['water_name','text'],"Water Batched Qty":['water_batched','number'],"Total Water":['total_water','number'],
+  "Water Reducer Name":['wr_name','text'],"Water Reducer Batched Qty":['wr','number'],
+  "Air Entrainment Name":['air_name','text'],"Air Entrainment Batched Qty":['air','number'],
+  "Water/Cement Ratio":['wc_ratio_report','number'],"Loaded Weight":['loaded_weight','number'],
+  "Aggregate #3 Name":['agg3_name','text'],"Aggregate #3 Batched Qty":['agg3_batched','number'],"Aggregate #3 Moisture":['agg3_moisture','moisture'],
+  "Aggregate #4 Name":['agg4_name','text'],"Aggregate #4 Batched Qty":['agg4_batched','number'],"Aggregate #4 Moisture":['agg4_moisture','moisture'],
+  "SCM #2 Name":['scm2_name','text'],"SCM #2 Batched Qty":['scm2_batched','number'],"SCM #2 Moisture":['scm2_moisture','moisture'],
+  "SCM #3 Name":['scm3_name','text'],"SCM #3 Batched Qty":['scm3_batched','number'],"SCM #3 Moisture":['scm3_moisture','moisture'],
+  "Admix #3 Name":['admix3_name','text'],"Admix #3 Batched Qty":['admix3','number'],"Admix #3 Moisture":['admix3_moisture','moisture'],
+  "Admix #4 Name":['admix4_name','text'],"Admix #4 Batched Qty":['admix4','number'],"Admix #4 Moisture":['admix4_moisture','moisture'],
+  "Admix #5 Name":['admix5_name','text'],"Admix #5 Batched Qty":['admix5','number'],"Admix #5 Moisture":['admix5_moisture','moisture'],
+  "Mix Code":['mix_code','text']
+}
 const MATERIALS = {
   rock: {aliases:['rock','stone','coarse aggregate','coarse agg','agg 1','aggregate 1','gravel']},
   sand: {aliases:['sand','fine aggregate','fine agg','agg 2','aggregate 2']},
@@ -170,7 +211,7 @@ function renderFields(){
   const box = $('fields'); box.innerHTML='';
   FIELD_DEFS.forEach(d=>{
     const wrap=document.createElement('div'); wrap.className='field'+(d.key==='issues'?' wide':'');
-    const label=document.createElement('label'); label.innerHTML=`${d.label} <span class="badge">Excel ${d.col}</span>`;
+    const label=document.createElement('label'); label.textContent=d.label;
     const input=d.key==='issues'?document.createElement('textarea'):document.createElement('input');
     if(d.type==='number' && input.tagName==='INPUT'){input.type='number'; input.step='any';}
     input.id='f_'+d.key; input.autocomplete='off';
@@ -187,10 +228,8 @@ function setField(key,value,source=''){
   const h=$('h_'+key); if(h){h.textContent=source?`Detected from: ${source}`:'Detected'; h.classList.add('ok');}
 }
 function clearDetectedHints(){FIELD_DEFS.forEach(d=>{const h=$('h_'+d.key);if(h){h.textContent='';h.className='hint';}})}
-function clearForm(keepPlacement=true){
-  const p=keepPlacement?$('f_placement').value:'';
+function clearForm(){
   FIELD_DEFS.forEach(d=>{$('f_'+d.key).value='';}); clearDetectedHints();
-  if(keepPlacement) $('f_placement').value=p;
   $('queueBtn').disabled=false;
 }
 
@@ -244,6 +283,17 @@ function parseLabeledSingle(lines,aliases,min,max,extraRegex=null){
     }
   } return null;
 }
+function inferredMaterialName(line){
+  let s=String(line||'')
+    .replace(/[-+]?\d[\d,]*(?:\.\d+)?\s*%?/g,' ')
+    .replace(/\b(required|target|design|theoretical|ordered|req|actual|batched|batch|loaded|delivered|wt|weight|qty|quantity|moisture|moist|water contribution)\b/ig,' ')
+    .replace(/[|:=]+/g,' ').replace(/\s+/g,' ').trim();
+  return s.length>=2&&s.length<=36?s:'';
+}
+function firstMaterialName(lines,aliases){
+  const line=lines.find(l=>hasAny(l,aliases)&&!/moist|absorp|specific gravity|\bsg\b/i.test(l));
+  return line?inferredMaterialName(line):'';
+}
 function parseTicketText(text){
   const lines=normalizeText(text).split('\n').map(cleanLine).filter(Boolean); const r={};
   for(const line of lines){
@@ -261,17 +311,28 @@ function parseTicketText(text){
     }
   }
   const rock=parseMaterialPair(lines,'rock'), sand=parseMaterialPair(lines,'sand'), cem=parseMaterialPair(lines,'cement'), ash=parseMaterialPair(lines,'flyash'), water=parseMaterialPair(lines,'water');
-  if(rock.required!=null) r.rock_required={value:rock.required,source:rock.source}; if(rock.batched!=null) r.rock_batched={value:rock.batched,source:rock.source};
-  if(sand.required!=null) r.sand_required={value:sand.required,source:sand.source}; if(sand.batched!=null) r.sand_batched={value:sand.batched,source:sand.source};
-  if(cem.required!=null) r.cement_required={value:cem.required,source:cem.source}; if(cem.batched!=null) r.cement_batched={value:cem.batched,source:cem.source};
-  if(ash.required!=null) r.flyash_required={value:ash.required,source:ash.source}; if(ash.batched!=null) r.flyash_batched={value:ash.batched,source:ash.source};
-  if(water.required!=null) r.water_required={value:water.required,source:water.source}; if(water.batched!=null) r.water_batched={value:water.batched,source:water.source};
+  if(rock.batched!=null) r.rock_batched={value:rock.batched,source:rock.source};
+  if(sand.batched!=null) r.sand_batched={value:sand.batched,source:sand.source};
+  if(cem.batched!=null) r.cement_batched={value:cem.batched,source:cem.source};
+  if(ash.batched!=null) r.flyash_batched={value:ash.batched,source:ash.source};
+  if(water.batched!=null) r.water_batched={value:water.batched,source:water.source};
+  const coarseName=firstMaterialName(lines,MATERIALS.rock.aliases); if(coarseName) r.coarse_name={value:coarseName,source:rock.source||coarseName};
+  const fineName=firstMaterialName(lines,MATERIALS.sand.aliases); if(fineName) r.fine_name={value:fineName,source:sand.source||fineName};
+  const cementName=firstMaterialName(lines,MATERIALS.cement.aliases); if(cementName) r.cement_name={value:cementName,source:cem.source||cementName};
+  const scmName=firstMaterialName(lines,MATERIALS.flyash.aliases); if(scmName) r.scm1_name={value:scmName,source:ash.source||scmName};
+  if(water.batched!=null) r.water_name={value:'WATER',source:water.source};
   const rm=parseMoisture(lines,'rock'); if(rm) r.rock_moisture=rm; const sm=parseMoisture(lines,'sand'); if(sm) r.sand_moisture=sm;
-  const wr=parseLabeledSingle(lines,['water reducer','wr ','wr:','pce','glenium','adva','polycarbox'],0,10000); if(wr) r.wr=wr;
-  const air=parseLabeledSingle(lines,['air entr','aea','air admixture',' air '],0,10000); if(air) r.air=air;
-  const adm2=parseLabeledSingle(lines,['admix 2','admixture 2','admix2','accelerator','retarder'],0,10000); if(adm2) r.admix2=adm2;
+  const wrAliases=['water reducer','wr ','wr:','pce','glenium','adva','polycarbox'];
+  const wr=parseLabeledSingle(lines,wrAliases,0,10000); if(wr){r.wr=wr;const n=firstMaterialName(lines,wrAliases);if(n)r.wr_name={value:n,source:wr.source};}
+  const airAliases=['air entr','aea','air admixture',' air '];
+  const air=parseLabeledSingle(lines,airAliases,0,10000); if(air){r.air=air;const n=firstMaterialName(lines,airAliases);if(n)r.air_name={value:n,source:air.source};}
+  const adm3Aliases=['admix 3','admixture 3','admix3','sra','accelerator','retarder'];
+  const adm3=parseLabeledSingle(lines,adm3Aliases,0,10000); if(adm3){r.admix3=adm3;const n=firstMaterialName(lines,adm3Aliases);if(n)r.admix3_name={value:n,source:adm3.source};}
   for(const line of lines){if(/psi|compressive|strength/i.test(line)){const n=chooseLast(numTokens(line),500,30000);if(n){r.tested_psi={value:n.value,source:line};break;}}}
+  for(const line of lines){if(/total\s+water/i.test(line)){const n=chooseLast(numTokens(line),0,5000);if(n){r.total_water={value:n.value,source:line};break;}}}
+  for(const line of lines){if(/loaded\s+weight|total\s+(?:batch|loaded)\s+weight|batch\s+weight/i.test(line)){const n=chooseLast(numTokens(line),1000,200000);if(n){r.loaded_weight={value:n.value,source:line};break;}}}
   for(const line of lines){if(/w\s*\/\s*c|wc ratio|water.?cement|wcm|w\/cm/i.test(line)){const candidates=numTokens(line).filter(n=>n.value>=0.15&&n.value<=0.9);if(candidates.length){r.wc_ratio_report={value:candidates[candidates.length-1].value,source:line};break;}}}
+  for(const line of lines){const m=line.match(/\bmix\s*(?:code|id|design|no\.?|#)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{1,30})/i);if(m){r.mix_code={value:m[1],source:line};break;}}
   return r;
 }
 function applyParsed(parsed){
@@ -314,97 +375,83 @@ function formTicket(){
 function validateTicket(t){const errs=[];if(!t.ticket)errs.push('Ticket # is blank');if(t.load_size!==''&&!(Number(t.load_size)>0))errs.push('Load Size must be greater than zero');return errs;}
 function addQueue(){
   const t=formTicket(),errs=validateTicket(t); if(errs.length&&!confirm(errs.join('\n')+'\n\nAdd anyway?')) return;
-  queue.push(t); persistQueue(); if(t.placement!=='')localStorage.setItem('ticketExtractorPlacement',String(t.placement)); renderQueue(); clearForm(true); $('ocrText').value='';
+  queue.push(t); persistQueue(); renderQueue(); clearForm(); $('ocrText').value='';
 }
 function renderQueue(){
   const b=$('queueBody'); b.innerHTML=''; if(!queue.length){b.innerHTML='<tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr>';}
-  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td>${esc(t.placement)}</td><td><strong>${esc(t.ticket)}</strong></td><td>${esc(t.load_size)}</td><td>${esc(t.rock_required)} / ${esc(t.rock_batched)}</td><td>${esc(t.sand_required)} / ${esc(t.sand_batched)}</td><td>${esc(t.cement_required)} / ${esc(t.cement_batched)}</td><td>${esc(t.water_required)} / ${esc(t.water_batched)}</td><td>${esc(t.rock_moisture)}% / ${esc(t.sand_moisture)}%</td><td>${esc(t.wc_ratio_report)}</td><td><button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
+  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><strong>${esc(t.ticket)}</strong></td><td>${esc(t.load_size)}</td><td>${esc(t.coarse_name)} · ${esc(t.rock_batched)} · ${esc(t.rock_moisture)}%</td><td>${esc(t.fine_name)} · ${esc(t.sand_batched)} · ${esc(t.sand_moisture)}%</td><td>${esc(t.cement_name)} · ${esc(t.cement_batched)}</td><td>${esc(t.scm1_name)} · ${esc(t.flyash_batched)}</td><td>${esc(t.water_batched)}</td><td>${esc(t.wc_ratio_report)}</td><td>${esc(t.mix_code)}</td><td><button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
   b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=()=>{queue.splice(Number(x.dataset.rm),1);persistQueue();renderQueue();});
   $('clearQueueBtn').disabled=!queue.length;$('exportBtn').disabled=!(queue.length&&workbookBuffer);
 }
 
-function columnNumber(col){let n=0;for(const ch of col)n=n*26+(ch.charCodeAt(0)-64);return n;}
-function cellCol(ref){return (ref.match(/[A-Z]+/i)||[''])[0].toUpperCase();}
 function normalizeZipTarget(target){target=target.replace(/\\/g,'/');if(target.startsWith('/'))return target.slice(1);if(target.startsWith('xl/'))return target;return 'xl/'+target.replace(/^\.\//,'');}
 function parseXML(s){return new DOMParser().parseFromString(s,'application/xml');}
 function xmlString(doc){return new XMLSerializer().serializeToString(doc);}
-function textOfInline(cell){const ts=cell.getElementsByTagName('t');let s='';for(const t of ts)s+=t.textContent||'';return s;}
-function cellValue(cell,shared){
-  if(!cell)return '';
-  const t=cell.getAttribute('t'); if(t==='inlineStr')return textOfInline(cell);
-  const vs=cell.getElementsByTagName('v'); if(!vs.length)return '';
-  const raw=vs[0].textContent||''; if(t==='s'){const idx=Number(raw);return shared[idx]??'';} return raw;
-}
-function sharedStringsFrom(xml){if(!xml)return[];const doc=parseXML(xml),sis=doc.getElementsByTagName('si'),out=[];for(const si of sis){let s='';for(const t of si.getElementsByTagName('t'))s+=t.textContent||'';out.push(s);}return out;}
+function columnLetters(n){let s='';while(n>0){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26)}return s}
 function getRow(doc,n){for(const r of doc.getElementsByTagName('row'))if(Number(r.getAttribute('r'))===n)return r;return null;}
-function getCell(row,col){if(!row)return null;for(const c of row.getElementsByTagName('c'))if(cellCol(c.getAttribute('r')||'')===col)return c;return null;}
-function getOrCreateRow(doc,n){
-  let r=getRow(doc,n);if(r)return r;const data=doc.getElementsByTagName('sheetData')[0];r=doc.createElementNS(data.namespaceURI,'row');r.setAttribute('r',String(n));
-  let before=null;for(const x of data.getElementsByTagName('row')){if(Number(x.getAttribute('r'))>n){before=x;break;}}before?data.insertBefore(r,before):data.appendChild(r);return r;
-}
-function getOrCreateCell(doc,row,col,rowNum,templateCell=null){
-  let c=getCell(row,col);if(c)return c;c=doc.createElementNS(row.namespaceURI,'c');c.setAttribute('r',col+rowNum);if(templateCell?.hasAttribute('s'))c.setAttribute('s',templateCell.getAttribute('s'));
-  let before=null;for(const x of row.getElementsByTagName('c'))if(columnNumber(cellCol(x.getAttribute('r')||''))>columnNumber(col)){before=x;break;}before?row.insertBefore(c,before):row.appendChild(c);return c;
-}
+function getCell(row,col){if(!row)return null;for(const x of row.getElementsByTagName('c')){const m=(x.getAttribute('r')||'').match(/[A-Z]+/i);if(m&&m[0].toUpperCase()===col)return x}return null}
 function clearCellChildren(c){while(c.firstChild)c.removeChild(c.firstChild);c.removeAttribute('t');}
 function setCellValue(doc,c,value,type){
   clearCellChildren(c); if(value===undefined||value===null||value==='')return;
-  if(type==='number' && Number.isFinite(Number(value))){const v=doc.createElementNS(c.namespaceURI,'v');v.textContent=String(Number(value));c.appendChild(v);}
+  if(type==='number'||type==='moisture'){const n=Number(value);if(!Number.isFinite(n))return;const v=doc.createElementNS(c.namespaceURI,'v');v.textContent=String(type==='moisture'?n/100:n);c.appendChild(v);}
   else{c.setAttribute('t','inlineStr');const is=doc.createElementNS(c.namespaceURI,'is'),t=doc.createElementNS(c.namespaceURI,'t');t.setAttribute('xml:space','preserve');t.textContent=String(value);is.appendChild(t);c.appendChild(is);}
 }
-function translateFormula(formula,delta){return formula.replace(/(\$?)([A-Z]{1,3})(\$?)(\d+)/g,(m,absC,col,absR,row)=>absR?m:`${absC}${col}${absR}${Number(row)+delta}`);}
-function ensureFormula(doc,targetRow,templateRow,col){
-  const trow=getRow(doc,templateRow),tcell=getCell(trow,col); if(!tcell)return;
-  const f=tcell.getElementsByTagName('f')[0];if(!f)return;
-  const row=getOrCreateRow(doc,targetRow),existing=getCell(row,col); if(existing&&existing.getElementsByTagName('f').length)return;
-  const c=getOrCreateCell(doc,row,col,targetRow,tcell); clearCellChildren(c); if(tcell.hasAttribute('s'))c.setAttribute('s',tcell.getAttribute('s'));
-  const nf=doc.createElementNS(c.namespaceURI,'f');nf.textContent=translateFormula(f.textContent||'',targetRow-templateRow);c.appendChild(nf);
+function copyCellStyle(src,dest){if(!src||!dest)return;for(const a of ['s'])if(src.hasAttribute(a))dest.setAttribute(a,src.getAttribute(a));}
+function locateSheetPath(wbDoc,relDoc,name){
+  const relMap={};for(const r of relDoc.getElementsByTagName('Relationship'))relMap[r.getAttribute('Id')]=normalizeZipTarget(r.getAttribute('Target')||'');
+  for(const s of wbDoc.getElementsByTagName('sheet'))if((s.getAttribute('name')||'').trim()===name){
+    const rid=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');return relMap[rid]||null;
+  }return null;
 }
-function findTargetRow(doc,shared,start,mode,reserved){
-  const occupied=[];for(const row of doc.getElementsByTagName('row')){const n=Number(row.getAttribute('r'));if(n<start)continue;const v=String(cellValue(getCell(row,'B'),shared)).trim();if(v!=='')occupied.push(n);}
-  const used=new Set([...occupied,...reserved]); if(mode==='append'){let m=start-1;for(const n of used)if(n>m)m=n;return m+1;}
-  let r=start;while(used.has(r))r++;return r;
-}
-function updateDimension(doc,row){const dims=doc.getElementsByTagName('dimension');if(!dims.length)return;const d=dims[0],ref=d.getAttribute('ref')||'A1';const parts=ref.split(':');const end=parts.length>1?parts[1]:parts[0];const m=end.match(/([A-Z]+)(\d+)/i);if(m&&Number(m[2])<row)d.setAttribute('ref',(parts[0]||'A1')+':'+m[1].toUpperCase()+row);}
-function forceRecalc(workbookDoc){let cp=workbookDoc.getElementsByTagName('calcPr')[0];if(!cp){const root=workbookDoc.documentElement;cp=workbookDoc.createElementNS(root.namespaceURI,'calcPr');root.appendChild(cp);}cp.setAttribute('calcMode','auto');cp.setAttribute('fullCalcOnLoad','1');cp.setAttribute('forceFullCalc','1');}
 async function inspectWorkbook(buffer){
   const zip=await JSZip.loadAsync(buffer),wbx=await zip.file('xl/workbook.xml').async('string'),relsx=await zip.file('xl/_rels/workbook.xml.rels').async('string');
-  const wbdoc=parseXML(wbx),reldoc=parseXML(relsx),rels={};for(const r of reldoc.getElementsByTagName('Relationship'))rels[r.getAttribute('Id')]=normalizeZipTarget(r.getAttribute('Target')||'');
-  const sheets=[];for(const s of wbdoc.getElementsByTagName('sheet')){const rid=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');sheets.push({name:s.getAttribute('name'),rid,path:rels[rid]});}
-  return {sheets};
+  const wbdoc=parseXML(wbx),reldoc=parseXML(relsx),ticketsPath=locateSheetPath(wbdoc,reldoc,'Tickets');
+  if(!ticketsPath||!zip.file(ticketsPath))throw new Error('Workbook must contain a sheet named "Tickets".');
+  return {ticketsPath};
 }
+function bufferToBase64(buffer){let s='';const bytes=new Uint8Array(buffer),step=0x8000;for(let i=0;i<bytes.length;i+=step)s+=String.fromCharCode(...bytes.subarray(i,i+step));return btoa(s)}
+function base64ToBuffer(s){const bin=atob(s),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a.buffer}
+function saveWorkbookTemplate(buffer,name){try{localStorage.setItem('cm_ticket_importer_template',bufferToBase64(buffer));localStorage.setItem('cm_ticket_importer_name',name||'Ticket Importer.xlsx')}catch(e){console.warn('Could not persist workbook template',e)}}
+async function restoreWorkbookTemplate(){try{const s=localStorage.getItem('cm_ticket_importer_template');if(!s)return false;workbookBuffer=base64ToBuffer(s);workbookName=localStorage.getItem('cm_ticket_importer_name')||'Ticket Importer.xlsx';workbookMeta=await inspectWorkbook(workbookBuffer.slice(0));$('workbookStatus').innerHTML='<span class="ok">Saved template ready: '+escapeHtml(workbookName)+' · exports replace only the Tickets sheet rows.</span>';renderQueue();return true}catch(e){console.warn(e);return false}}
 async function exportWorkbook(){
-  if(!workbookBuffer||!queue.length)return;$('exportBtn').disabled=true;$('exportStatus').textContent='Building updated workbook…';
+  if(!workbookBuffer||!queue.length)return;$('exportBtn').disabled=true;$('exportStatus').textContent='Building Ticket Importer workbook…';
   try{
-    const zip=await JSZip.loadAsync(workbookBuffer.slice(0)); const wbXml=await zip.file('xl/workbook.xml').async('string');const relXml=await zip.file('xl/_rels/workbook.xml.rels').async('string');
-    const wbDoc=parseXML(wbXml),relDoc=parseXML(relXml),relMap={};for(const r of relDoc.getElementsByTagName('Relationship'))relMap[r.getAttribute('Id')]=normalizeZipTarget(r.getAttribute('Target')||'');
-    const selectedName=$('sheetSelect').value;let sheetPath=null;for(const s of wbDoc.getElementsByTagName('sheet')){if(s.getAttribute('name')===selectedName){const rid=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');sheetPath=relMap[rid];break;}}
-    if(!sheetPath||!zip.file(sheetPath))throw new Error('Could not locate selected worksheet XML.');
-    const shDoc=parseXML(await zip.file(sheetPath).async('string')); const shared=zip.file('xl/sharedStrings.xml')?sharedStringsFrom(await zip.file('xl/sharedStrings.xml').async('string')):[];
-    const start=Math.max(1,Number($('dataStartRow').value)||4), templ=Math.max(1,Number($('templateRow').value)||4), mode=$('rowMode').value;const reserved=[];
-    for(const ticket of queue){
-      const rowNum=findTargetRow(shDoc,shared,start,mode,reserved);reserved.push(rowNum);const row=getOrCreateRow(shDoc,rowNum);const trow=getRow(shDoc,templ);
-      for(const d of FIELD_DEFS){let val=ticket[d.key];if(val===undefined||val===null||val==='')continue;if(d.key==='rock_moisture'||d.key==='sand_moisture')val=Number(val)/100;
-        const tc=getCell(trow,d.col),c=getOrCreateCell(shDoc,row,d.col,rowNum,tc);setCellValue(shDoc,c,val,d.type);if(tc?.hasAttribute('s')&&!c.hasAttribute('s'))c.setAttribute('s',tc.getAttribute('s'));
-      }
-      if($('copyFormulas').value==='yes')for(const col of FORMULA_COLS)ensureFormula(shDoc,rowNum,templ,col);updateDimension(shDoc,rowNum);
-    }
-    forceRecalc(wbDoc);zip.file(sheetPath,xmlString(shDoc));zip.file('xl/workbook.xml',xmlString(wbDoc));
-    const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});const url=URL.createObjectURL(blob),a=document.createElement('a');
-    const base=(workbookName||'Ticket Analyzer.xlsx').replace(/\.xlsx$/i,'');a.href=url;a.download=base+' - Updated.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
-    $('exportStatus').innerHTML=`<span class="ok">Export complete: ${queue.length} ticket(s) written.</span>`;
-  }catch(e){console.error(e);$('exportStatus').innerHTML=`<span class="error">Export failed: ${escapeHtml(e.message||String(e))}</span>`;}
+    const zip=await JSZip.loadAsync(workbookBuffer.slice(0));
+    const wbXml=await zip.file('xl/workbook.xml').async('string'),relXml=await zip.file('xl/_rels/workbook.xml.rels').async('string');
+    const wbDoc=parseXML(wbXml),relDoc=parseXML(relXml),sheetPath=locateSheetPath(wbDoc,relDoc,'Tickets');
+    if(!sheetPath||!zip.file(sheetPath))throw new Error('Could not locate the Tickets worksheet.');
+    const shDoc=parseXML(await zip.file(sheetPath).async('string')),data=shDoc.getElementsByTagName('sheetData')[0];
+    if(!data)throw new Error('Tickets worksheet has no sheetData.');
+    const headerRow=getRow(shDoc,1),styleRow=getRow(shDoc,2);
+    const styleByCol={};for(let i=1;i<=TICKET_HEADERS.length;i++){const col=columnLetters(i),cell=getCell(styleRow,col);if(cell)styleByCol[col]=cell.getAttribute('s')||''}
+    for(const row of Array.from(data.getElementsByTagName('row')))if(Number(row.getAttribute('r'))>=2)data.removeChild(row);
+    queue.forEach((ticket,idx)=>{
+      const rn=idx+2,row=shDoc.createElementNS(data.namespaceURI,'row');row.setAttribute('r',String(rn));data.appendChild(row);
+      TICKET_HEADERS.forEach((header,i)=>{
+        const map=EXPORT_MAP[header]; if(!map)return; const [key,type]=map; let val=ticket[key]; if(val===undefined||val===null||val==='')return;
+        const col=columnLetters(i+1),cell=shDoc.createElementNS(data.namespaceURI,'c');cell.setAttribute('r',col+rn);if(styleByCol[col])cell.setAttribute('s',styleByCol[col]);setCellValue(shDoc,cell,val,type);row.appendChild(cell);
+      });
+    });
+    const dims=shDoc.getElementsByTagName('dimension');if(dims.length)dims[0].setAttribute('ref','A1:BJ'+Math.max(1,queue.length+1));
+    zip.file(sheetPath,xmlString(shDoc));
+    const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+    const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;
+    const stamp=new Date().toISOString().slice(0,10);a.download=(workbookName||'Ticket Importer.xlsx').replace(/\.xlsx$/i,'')+' - '+stamp+'.xlsx';
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+    const count=queue.length;queue=[];persistQueue();renderQueue();
+    $('exportStatus').innerHTML='<span class="ok">Export complete: '+count+' ticket(s). The Tickets sheet contains only this export. Queue cleared for the next export.</span>';
+  }catch(e){console.error(e);$('exportStatus').innerHTML='<span class="error">Export failed: '+escapeHtml(e.message||String(e))+'</span>';}
   finally{$('exportBtn').disabled=!(queue.length&&workbookBuffer);}
 }
 
 function esc(v){return escapeHtml(v===undefined||v===null?'':String(v));}function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 
-$('workbookFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{workbookBuffer=await f.arrayBuffer();workbookName=f.name;workbookMeta=await inspectWorkbook(workbookBuffer.slice(0));$('sheetSelect').innerHTML='';for(const s of workbookMeta.sheets){const o=document.createElement('option');o.value=s.name;o.textContent=s.name;$('sheetSelect').appendChild(o);}$('sheetSelect').disabled=false;$('workbookStatus').innerHTML=`<span class="ok">Loaded ${escapeHtml(f.name)} — ${workbookMeta.sheets.length} sheet(s).</span>`;renderQueue();}catch(err){console.error(err);workbookBuffer=null;$('workbookStatus').innerHTML=`<span class="error">Could not read workbook: ${escapeHtml(err.message||String(err))}</span>`;}});
-$('photoFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;saveOriginalToAccount(f);const rd=new FileReader();rd.onload=()=>{photoDataUrl=rd.result;rotation=0;$('preview').src=photoDataUrl;$('previewWrap').style.display='block';$('photoStatus').textContent=f.name;$('rotateBtn').disabled=false;$('extractBtn').disabled=false;};rd.readAsDataURL(f);});
+$('workbookFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{workbookBuffer=await f.arrayBuffer();workbookName=f.name;workbookMeta=await inspectWorkbook(workbookBuffer.slice(0));saveWorkbookTemplate(workbookBuffer,workbookName);$('workbookStatus').innerHTML='<span class="ok">Saved '+escapeHtml(f.name)+' as this device\'s Ticket Importer template.</span>';renderQueue();}catch(err){console.error(err);workbookBuffer=null;$('workbookStatus').innerHTML='<span class="error">Could not use workbook: '+escapeHtml(err.message||String(err))+'</span>';}});
+$('photoFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;$('accountSave').textContent='';saveOriginalToAccount(f);const rd=new FileReader();rd.onload=()=>{photoDataUrl=rd.result;rotation=0;$('preview').src=photoDataUrl;$('previewWrap').style.display='block';$('photoStatus').textContent=f.name;$('rotateBtn').disabled=false;$('extractBtn').disabled=false;};rd.readAsDataURL(f);});
 $('photoDrop').addEventListener('dragover',e=>{e.preventDefault();$('photoDrop').classList.add('drag')});$('photoDrop').addEventListener('dragleave',()=>$('photoDrop').classList.remove('drag'));$('photoDrop').addEventListener('drop',e=>{e.preventDefault();$('photoDrop').classList.remove('drag');const f=e.dataTransfer.files[0];if(!f||!f.type.startsWith('image/'))return;const dt=new DataTransfer();dt.items.add(f);$('photoFile').files=dt.files;$('photoFile').dispatchEvent(new Event('change'));});
 $('rotateBtn').onclick=()=>{rotation=(rotation+90)%360;$('preview').style.transform=`rotate(${rotation}deg)`;$('preview').style.margin=rotation%180?'50px 0':'0';};
 $('extractBtn').onclick=runOCR;$('reparseBtn').onclick=()=>applyParsed(parseTicketText($('ocrText').value));$('queueBtn').onclick=addQueue;$('clearBtn').onclick=()=>clearForm(true);$('clearQueueBtn').onclick=()=>{if(confirm('Clear all queued tickets?')){queue=[];persistQueue();renderQueue();}};$('exportBtn').onclick=exportWorkbook;
-restoreQueue();renderFields();clearForm(true);$('queueBtn').disabled=false;renderQueue();
+restoreQueue();renderFields();clearForm();$('queueBtn').disabled=false;renderQueue();restoreWorkbookTemplate();
 </script>
 </body>
 </html>
