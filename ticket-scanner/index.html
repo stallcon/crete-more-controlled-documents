@@ -121,6 +121,9 @@ body.formatOpen{overflow:hidden}
                 <option value="total_water">Total Water</option>
               </select><button id="defineOther" class="secondary">Item to define</button></div>
               <div id="otherDefinedList" class="formatList"></div>
+              <div class="step" style="margin-top:14px">Alignment anchors</div>
+              <div class="selectorHelp">Define 3–4 anchors around stable printed text that appears in the same place on every ticket (for example a fixed heading, column label, or footer label). The extractor finds these first and aligns the ticket before reading fields.</div>
+              <div id="anchorDefs" class="formatList" style="margin-top:8px"></div>
               <details style="margin-top:12px"><summary>Advanced options</summary><div class="selectorHelp" style="margin-top:8px">Material columns use the saved material row height and the horizontal column area you define. Drag the box around the printed value/heading area. Two-finger pinch or the zoom buttons can enlarge the reference ticket.</div></details>
             </div>
           </div>
@@ -299,8 +302,8 @@ const MATERIALS = {
 let workbookBuffer = null, workbookName = '', workbookMeta = null;
 let photoDataUrl = null, rotation = 0, queue = [], lastDetected = {};
 let ocrWorker = null, ticketSourceFile = null;
-let pdfJs = null, pdfDoc = null, pdfPageNumber = 1, pdfPageCount = 0, pdfPageResults = new Map(), pdfNativeTextMaps = new Map();
-let areaLayouts=[],activeLayout={id:null,name:'',regions:[],material_rows:{}},defineTarget=null,pendingRect=null,selectorScale=1;
+let pdfJs = null, pdfDoc = null, pdfPageNumber = 1, pdfPageCount = 0, pdfPageResults = new Map();
+let areaLayouts=[],activeLayout={id:null,name:'',regions:[],material_rows:{},anchors:{}},defineTarget=null,pendingRect=null,selectorScale=1;
 let pointerStart=null,pinchStart=null,formatReferenceDataUrl=null;
 
 const $ = id => document.getElementById(id);
@@ -329,12 +332,12 @@ async function sbRest(path,opt={}){
   const r=await fetch(SB_URL+path,{...opt,headers:{apikey:SB_KEY,authorization:'Bearer '+sbToken,...(opt.headers||{})}});
   const tx=await r.text(),d=tx?JSON.parse(tx):null;if(!r.ok)throw Error(d?.message||d?.error||'Supabase request failed');return d;
 }
-function emptyLayout(){return{id:null,name:'',regions:[],material_rows:{}}}
+function emptyLayout(){return{id:null,name:'',regions:[],material_rows:{},anchors:{}}}
 async function loadAreaLayouts(){
   if(!sbToken||!sbUser)return;
   try{
     areaLayouts=await sbRest('/rest/v1/cm_ticket_area_layouts?select=id,name,regions,material_rows,reference_info,updated_at&order=updated_at.desc');
-    if(!activeLayout.id&&areaLayouts.length){const x=areaLayouts[0];activeLayout={id:x.id,name:x.name,regions:Array.isArray(x.regions)?x.regions:[],material_rows:x.material_rows||{}};$('layoutName').value=activeLayout.name||'';}
+    if(!activeLayout.id&&areaLayouts.length){const x=areaLayouts[0];activeLayout={id:x.id,name:x.name,regions:Array.isArray(x.regions)?x.regions:[],material_rows:x.material_rows||{},anchors:x.reference_info?.anchors||{}};$('layoutName').value=activeLayout.name||'';}
     renderLayoutSelect();
   }catch(e){console.warn(e)}
 }
@@ -345,20 +348,20 @@ function renderLayoutSelect(){
 }
 function selectLayoutById(id){
   const found=areaLayouts.find(x=>x.id===id);
-  activeLayout=found?{id:found.id,name:found.name,regions:Array.isArray(found.regions)?found.regions:[],material_rows:found.material_rows||{}}:emptyLayout();
+  activeLayout=found?{id:found.id,name:found.name,regions:Array.isArray(found.regions)?found.regions:[],material_rows:found.material_rows||{},anchors:found.reference_info?.anchors||{}}:emptyLayout();
   $('layoutName').value=activeLayout.name||'';defineTarget=null;pendingRect=null;$('clearLayoutDefs').disabled=true;renderDefinitionState();drawSelector();
 }
 async function saveAreaLayout(){
   if(!sbUser)throw Error('Sign in required.');
   const name=$('layoutName').value.trim();if(!name)throw Error('Enter a layout name.');
-  const payload={user_id:sbUser.id,name,regions:activeLayout.regions||[],material_rows:activeLayout.material_rows||{},reference_info:{updated_from:'ticket_scanner'},updated_at:new Date().toISOString()};
+  const payload={user_id:sbUser.id,name,regions:activeLayout.regions||[],material_rows:activeLayout.material_rows||{},reference_info:{updated_from:'ticket_scanner',anchors:activeLayout.anchors||{}},updated_at:new Date().toISOString()};
   let rows;
   if(activeLayout.id){
     rows=await sbRest('/rest/v1/cm_ticket_area_layouts?id=eq.'+encodeURIComponent(activeLayout.id),{method:'PATCH',headers:{'content-type':'application/json',prefer:'return=representation'},body:JSON.stringify(payload)});
   }else{
     rows=await sbRest('/rest/v1/cm_ticket_area_layouts',{method:'POST',headers:{'content-type':'application/json',prefer:'return=representation'},body:JSON.stringify(payload)});
   }
-  const row=rows?.[0];if(row)activeLayout={id:row.id,name:row.name,regions:row.regions||[],material_rows:row.material_rows||{}};
+  const row=rows?.[0];if(row)activeLayout={id:row.id,name:row.name,regions:row.regions||[],material_rows:row.material_rows||{},anchors:row.reference_info?.anchors||activeLayout.anchors||{}};
   await loadAreaLayouts();$('layoutSelect').value=activeLayout.id||'';
   $('selectorStatus').innerHTML='<span class="ok">Layout saved. Applying it to all queued tickets…</span>';
   await reextractQueuedTicketsWithActiveLayout();
@@ -388,6 +391,11 @@ function clearSelectedLayoutDefinition(){
       activeLayout.material_rows[mat]=row;
       label=matLabel+' '+({name:'Name',batched:'Batched Qty',moisture:'Moisture',water:'Water'}[slot]||slot);
     }
+  }else if(defineTarget.kind==='anchor'){
+    const key=defineTarget.key;
+    if(!activeLayout.anchors?.[key]){$('selectorStatus').textContent='That anchor is not currently defined.';return}
+    delete activeLayout.anchors[key];
+    label='Alignment '+key.toUpperCase();
   }else{
     $('selectorStatus').textContent='Select a defined item first.';
     return;
@@ -428,7 +436,20 @@ function renderOtherDefined(){
   b.innerHTML=(activeLayout.regions||[]).map(r=>'<button class="secondary savedDef" data-region="'+r.key+'">✓ '+esc(labels[r.key]||r.key)+'</button>').join('');
   b.querySelectorAll('[data-region]').forEach(x=>x.onclick=()=>{const r=(activeLayout.regions||[]).find(z=>z.key===x.dataset.region);if(r){defineTarget={kind:'other',key:r.key};pendingRect={...r.rect};$('otherItem').value=r.key;markActiveTarget(x);$('clearLayoutDefs').disabled=false;drawSelector();}});
 }
-function renderDefinitionState(){renderMaterialDefs();renderOtherDefined()}
+function renderAnchorDefs(){
+  const b=$('anchorDefs');if(!b)return;b.innerHTML='';
+  for(let i=1;i<=4;i++){
+    const key='a'+i,a=activeLayout.anchors?.[key];
+    const btn=document.createElement('button');btn.className='secondary '+(a?'savedDef':'');btn.textContent=(a?'✓ ':'')+'Anchor '+i+(a?.text?' · '+a.text.slice(0,18):'');
+    btn.onclick=()=>{
+      defineTarget={kind:'anchor',key};pendingRect=a?.rect?{...a.rect}:null;markActiveTarget(btn);$('clearLayoutDefs').disabled=!a;
+      $('selectorStatus').textContent=a?'Anchor '+i+' selected. Drag a replacement box or clear this selected anchor.':'Drag a box around stable printed text for Anchor '+i+'.';
+      $('saveDefinedItem').disabled=!pendingRect;drawSelector();
+    };
+    b.appendChild(btn);
+  }
+}
+function renderDefinitionState(){renderMaterialDefs();renderOtherDefined();renderAnchorDefs()}
 function markActiveTarget(el){document.querySelectorAll('.targetActive').forEach(x=>x.classList.remove('targetActive'));el?.classList.add('targetActive')}
 function setSelectorImage(src){
   if(!src)return;const im=$('selectorImage');im.onload=()=>{resizeSelectorCanvas();drawSelector()};im.src=src;selectorScale=1;applySelectorZoom();
@@ -465,6 +486,7 @@ function drawSelector(){
     const rr={x1:0,x2:1,y1:row.y1,y2:row.y2};drawBox(ctx,rr,cv.width,cv.height,mat,'#53a7ff');
     for(const [slot,col] of Object.entries(row.columns||{})){const cr={x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2};drawBox(ctx,cr,cv.width,cv.height,mat+' '+slot,'#ad7cff')}
   }
+  for(const [key,a] of Object.entries(activeLayout.anchors||{}))if(a?.rect)drawBox(ctx,a.rect,cv.width,cv.height,key.toUpperCase(),'#ff7a00');
   if(pendingRect)drawBox(ctx,pendingRect,cv.width,cv.height,'pending','#ffcc00');
 }
 function pointerPos(e,cv){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*(cv.width/r.width),y:(e.clientY-r.top)*(cv.height/r.height)}}
@@ -478,11 +500,24 @@ function installSelectorEvents(){
   cv.addEventListener('pointermove',e=>{if(!touches.has(e.pointerId))return;touches.set(e.pointerId,{x:e.clientX,y:e.clientY});if(touches.size===2&&pinchStart){const a=[...touches.values()],d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);selectorScale=Math.max(1,Math.min(4,pinchStart.scale*d/pinchStart.dist));applySelectorZoom()}});
   const clearTouch=e=>{touches.delete(e.pointerId);if(touches.size<2)pinchStart=null};cv.addEventListener('pointerup',clearTouch);cv.addEventListener('pointercancel',clearTouch);
 }
-function savePendingDefinition(){
+async function recognizeAnchorText(rect){
+  const src=formatReferenceDataUrl||photoDataUrl;if(!src)return'';
+  const crop=await cropNormalized(src,rect),prepared=await prepareOcrCrop(crop,'gray'),worker=await ensureOcrWorker();
+  await worker.setParameters({tessedit_pageseg_mode:(Tesseract.PSM&&Tesseract.PSM.SINGLE_LINE)||'7',preserve_interword_spaces:'1',tessedit_char_whitelist:'',user_defined_dpi:'300'});
+  const res=await worker.recognize(prepared);
+  return normalizeText(res.data.text||'').replace(/\s+/g,' ').trim();
+}
+async function savePendingDefinition(){
   if(!defineTarget||!pendingRect)return;
   if(defineTarget.kind==='other'){
     activeLayout.regions=(activeLayout.regions||[]).filter(x=>x.key!==defineTarget.key);
     activeLayout.regions.push({key:defineTarget.key,rect:{...pendingRect}});
+  }else if(defineTarget.kind==='anchor'){
+    $('selectorStatus').textContent='Reading alignment anchor…';
+    const text=await recognizeAnchorText(pendingRect);
+    if(!text){$('selectorStatus').innerHTML='<span class="error">Could not read text in this anchor. Choose a stable printed word or label and try again.</span>';return}
+    activeLayout.anchors=activeLayout.anchors||{};
+    activeLayout.anchors[defineTarget.key]={rect:{...pendingRect},text};
   }else{
     const mat=defineTarget.material,slot=defineTarget.slot;
     activeLayout.material_rows=activeLayout.material_rows||{};const row=activeLayout.material_rows[mat]||{columns:{}};
@@ -608,11 +643,9 @@ async function recognizeDefinedField(worker,key,crop){
   const gray=await prepareOcrCrop(crop,'gray');
   const r1=await worker.recognize(gray),p1=parseAreaValue(key,r1.data.text||'');
   attempts.push({variant:'gray',text:r1.data.text||'',confidence:Number(r1.data.confidence||0),parsed:p1});
-  const rule=fieldOcrRule(key),minConf=rule.kind==='text'?68:78;
+  const minConf=fieldOcrRule(key).kind==='text'?68:78;
   if(!p1||Number(r1.data.confidence||0)<minConf){
     const bw=await prepareOcrCrop(crop,'threshold');
-    const secondPsm=rule.kind==='text'?((Tesseract.PSM&&Tesseract.PSM.SINGLE_BLOCK)||'6'):((Tesseract.PSM&&Tesseract.PSM.SINGLE_WORD)||'8');
-    await worker.setParameters({tessedit_pageseg_mode:secondPsm,preserve_interword_spaces:rule.kind==='text'?'1':'0',tessedit_char_whitelist:rule.whitelist||'',user_defined_dpi:'300'});
     const r2=await worker.recognize(bw),p2=parseAreaValue(key,r2.data.text||'');
     attempts.push({variant:'threshold',text:r2.data.text||'',confidence:Number(r2.data.confidence||0),parsed:p2});
   }
@@ -622,96 +655,86 @@ async function recognizeDefinedField(worker,key,crop){
   const conf=Math.round(best.confidence||0),reviewRequired=conf<(fieldOcrRule(key).kind==='text'?65:72)||best.parsed.repair!=='direct'&&best.parsed.repair!=='text'&&best.parsed.repair!=='ticket';
   return{value:best.parsed.value,confidence:conf,rawText:best.text,source:'Defined area'+(best.parsed.repair&&best.parsed.repair!=='direct'?' · '+best.parsed.repair:''),reviewRequired};
 }
-function textFromNativePdfRegion(nativeMap,r){
-  if(!Array.isArray(nativeMap)||!nativeMap.length)return'';
-  const padX=Math.min(.008,Math.max(0,(r.x2-r.x1)*.08)),padY=Math.min(.006,Math.max(0,(r.y2-r.y1)*.18));
-  const items=nativeMap.filter(it=>{
-    const cx=(it.x1+it.x2)/2,cy=(it.y1+it.y2)/2;
-    return cx>=r.x1-padX&&cx<=r.x2+padX&&cy>=r.y1-padY&&cy<=r.y2+padY;
-  });
-  items.sort((a,b)=>Math.abs(a.y1-b.y1)>.008?a.y1-b.y1:a.x1-b.x1);
-  return items.map(x=>x.str).join(' ').replace(/\s+/g,' ').trim();
+function anchorToken(s){
+  const words=String(s||'').toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').split(/\s+/).filter(w=>w.length>=3);
+  words.sort((a,b)=>b.length-a.length);return words[0]||'';
 }
-async function cropNormalizedPadded(dataUrl,r,key){
-  const rule=fieldOcrRule(key),rx=Math.max(0,r.x2-r.x1),ry=Math.max(0,r.y2-r.y1);
-  const px=rule.kind==='text'?Math.min(.012,rx*.16):Math.min(.006,rx*.10);
-  const py=Math.min(.012,Math.max(.004,ry*.35));
-  return cropNormalized(dataUrl,{x1:Math.max(0,r.x1-px),x2:Math.min(1,r.x2+px),y1:Math.max(0,r.y1-py),y2:Math.min(1,r.y2+py)});
+function editDistance(a,b){
+  a=String(a);b=String(b);const dp=Array(b.length+1).fill(0).map((_,j)=>j);
+  for(let i=1;i<=a.length;i++){let prev=dp[0];dp[0]=i;for(let j=1;j<=b.length;j++){const tmp=dp[j];dp[j]=Math.min(dp[j]+1,dp[j-1]+1,prev+(a[i-1]===b[j-1]?0:1));prev=tmp}}
+  return dp[b.length];
 }
-function parseTsvWords(tsv){
+function wordSimilarity(a,b){if(!a||!b)return 0;const m=Math.max(a.length,b.length);return m?1-editDistance(a,b)/m:0}
+function parseAnchorTsv(tsv,w,h){
   const lines=String(tsv||'').trim().split(/\r?\n/);if(lines.length<2)return[];
-  const headers=lines[0].split('\t'),idx={};headers.forEach((h,i)=>idx[h]=i);
-  const out=[];
-  for(let i=1;i<lines.length;i++){
-    const p=lines[i].split('\t'),txt=(p[idx.text]||'').trim();if(!txt)continue;
+  const hdr=lines[0].split('\t'),idx={};hdr.forEach((x,i)=>idx[x]=i);const out=[];
+  for(let i=1;i<lines.length;i++){const p=lines[i].split('\t'),text=(p[idx.text]||'').trim();if(!text)continue;
     const left=Number(p[idx.left]),top=Number(p[idx.top]),width=Number(p[idx.width]),height=Number(p[idx.height]),conf=Number(p[idx.conf]);
-    if([left,top,width,height].some(v=>!Number.isFinite(v)))continue;
-    out.push({text:txt,left,top,width,height,conf:Number.isFinite(conf)?conf:0});
-  }
-  return out;
+    if(!Number.isFinite(left)||!Number.isFinite(top)||!Number.isFinite(width)||!Number.isFinite(height))continue;
+    out.push({text,norm:text.toUpperCase().replace(/[^A-Z0-9]/g,''),x:(left+width/2)/w,y:(top+height/2)/h,conf:Number.isFinite(conf)?conf:0});
+  }return out;
 }
-async function recognizeMaterialRow(worker,dataUrl,row,mat){
-  const rowRect={x1:0,x2:1,y1:row.y1,y2:row.y2};
-  const rowCrop=await cropNormalizedPadded(dataUrl,rowRect,mat+'_row');
-  const prepared=await prepareOcrCrop(rowCrop,'gray');
-  await worker.setParameters({tessedit_pageseg_mode:(Tesseract.PSM&&Tesseract.PSM.SINGLE_LINE)||'7',preserve_interword_spaces:'1',tessedit_char_whitelist:'',user_defined_dpi:'300'});
-  const res=await worker.recognize(prepared,{}, {text:true,tsv:true});
-  const words=parseTsvWords(res.data.tsv),map=MATERIAL_FIELD_KEYS[mat]||{},results={};
-  if(!words.length)return results;
-  const prepImg=new Image();prepImg.src=prepared;await prepImg.decode();const fullW=Math.max(1,prepImg.naturalWidth);
-  for(const [slot,col] of Object.entries(row.columns||{})){
-    const key=map[slot];if(!key)continue;
-    const selected=words.filter(w=>{const cx=(w.left+w.width/2)/fullW;return cx>=Math.max(0,col.x1-.02)&&cx<=Math.min(1,col.x2+.02)});
-    if(!selected.length)continue;
-    const text=selected.map(w=>w.text).join(' '),parsed=parseAreaValue(key,text);
-    if(!parsed)continue;
-    const conf=Math.round(selected.reduce((a,w)=>a+Math.max(0,w.conf),0)/selected.length);
-    results[key]={value:parsed.value,confidence:conf,rawText:text,source:'Defined material row · contextual OCR',reviewRequired:conf<70};
-  }
-  return results;
+async function prepareAlignmentPage(dataUrl){
+  const im=new Image();im.src=dataUrl;await im.decode();const max=1800,scale=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));
+  const cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.naturalWidth*scale));cv.height=Math.max(1,Math.round(im.naturalHeight*scale));
+  const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(im,0,0,cv.width,cv.height);
+  const id=ctx.getImageData(0,0,cv.width,cv.height),d=id.data;for(let i=0;i<d.length;i+=4){let g=.299*d[i]+.587*d[i+1]+.114*d[i+2];g=Math.max(0,Math.min(255,(g-128)*1.25+128));d[i]=d[i+1]=d[i+2]=g}ctx.putImageData(id,0,0);
+  return{dataUrl:cv.toDataURL('image/png',.95),width:cv.width,height:cv.height};
 }
-async function extractWithSavedAreas(dataUrl,nativeMap=null){
+function solve3(M,v){
+  const a=M.map((r,i)=>[...r,v[i]]);
+  for(let i=0;i<3;i++){let p=i;for(let r=i+1;r<3;r++)if(Math.abs(a[r][i])>Math.abs(a[p][i]))p=r;[a[i],a[p]]=[a[p],a[i]];if(Math.abs(a[i][i])<1e-9)return null;
+    const q=a[i][i];for(let j=i;j<4;j++)a[i][j]/=q;for(let r=0;r<3;r++)if(r!==i){const f=a[r][i];for(let j=i;j<4;j++)a[r][j]-=f*a[i][j]}}
+  return[a[0][3],a[1][3],a[2][3]];
+}
+function fitAffine(matches){
+  if(matches.length<3)return null;const M=[[0,0,0],[0,0,0],[0,0,0]],vx=[0,0,0],vy=[0,0,0];
+  for(const m of matches){const a=[m.rx,m.ry,1];for(let i=0;i<3;i++){vx[i]+=a[i]*m.cx;vy[i]+=a[i]*m.cy;for(let j=0;j<3;j++)M[i][j]+=a[i]*a[j]}}
+  const x=solve3(M,vx),y=solve3(M,vy);return x&&y?{type:'affine',x,y}:null;
+}
+function fitSimilarity(matches){
+  if(matches.length<2)return null;const a=matches[0],b=matches[1],rdx=b.rx-a.rx,rdy=b.ry-a.ry,cdx=b.cx-a.cx,cdy=b.cy-a.cy;
+  const rl=Math.hypot(rdx,rdy),cl=Math.hypot(cdx,cdy);if(rl<1e-6||cl<1e-6)return null;const s=cl/rl,ang=Math.atan2(cdy,cdx)-Math.atan2(rdy,rdx),co=Math.cos(ang)*s,si=Math.sin(ang)*s;
+  return{type:'affine',x:[co,-si,a.cx-co*a.rx+si*a.ry],y:[si,co,a.cy-si*a.rx-co*a.ry]};
+}
+function mapAlignedPoint(t,x,y){if(!t)return{x,y};return{x:t.x[0]*x+t.x[1]*y+t.x[2],y:t.y[0]*x+t.y[1]*y+t.y[2]}}
+function mapAlignedRect(t,r){
+  if(!t)return r;const pts=[mapAlignedPoint(t,r.x1,r.y1),mapAlignedPoint(t,r.x2,r.y1),mapAlignedPoint(t,r.x1,r.y2),mapAlignedPoint(t,r.x2,r.y2)];
+  return{x1:Math.max(0,Math.min(...pts.map(p=>p.x))),x2:Math.min(1,Math.max(...pts.map(p=>p.x))),y1:Math.max(0,Math.min(...pts.map(p=>p.y))),y2:Math.min(1,Math.max(...pts.map(p=>p.y)))};
+}
+async function buildAlignmentTransform(worker,dataUrl){
+  const anchors=Object.entries(activeLayout.anchors||{}).filter(([,a])=>a?.rect&&anchorToken(a.text));if(!anchors.length)return{transform:null,matched:0,total:0};
+  const pg=await prepareAlignmentPage(dataUrl);
+  await worker.setParameters({tessedit_pageseg_mode:(Tesseract.PSM&&Tesseract.PSM.SPARSE_TEXT)||'11',preserve_interword_spaces:'1',tessedit_char_whitelist:'',user_defined_dpi:'300'});
+  const res=await worker.recognize(pg.dataUrl),words=parseAnchorTsv(res.data.tsv,pg.width,pg.height),matches=[];
+  for(const [key,a] of anchors){const target=anchorToken(a.text),rc={x:(a.rect.x1+a.rect.x2)/2,y:(a.rect.y1+a.rect.y2)/2};let best=null,bestScore=-1e9;
+    for(const w of words){const sim=wordSimilarity(target,w.norm);if(sim<.55)continue;const dist=Math.hypot(w.x-rc.x,w.y-rc.y);if(dist>.35)continue;const score=sim*100+w.conf*.12-dist*80;if(score>bestScore){bestScore=score;best=w}}
+    if(best)matches.push({key,rx:rc.x,ry:rc.y,cx:best.x,cy:best.y,score:bestScore});
+  }
+  let transform=null;if(matches.length>=3)transform=fitAffine(matches);else if(matches.length===2)transform=fitSimilarity(matches);else if(matches.length===1){const m=matches[0];transform={type:'affine',x:[1,0,m.cx-m.rx],y:[0,1,m.cy-m.ry]}}
+  return{transform,matched:matches.length,total:anchors.length,matches};
+}
+async function extractWithSavedAreas(dataUrl){
   if(!layoutHasDefinitions())throw Error('No defined areas in selected layout.');
   const worker=await ensureOcrWorker(),parsed={};let reviewCount=0,total=0;
+  let alignment={transform:null,matched:0,total:0};
+  if(Object.keys(activeLayout.anchors||{}).length){
+    $('photoStatus').textContent='Finding alignment anchors…';
+    alignment=await buildAlignmentTransform(worker,dataUrl).catch(e=>{console.warn('Anchor alignment failed',e);return{transform:null,matched:0,total:Object.keys(activeLayout.anchors||{}).length}});
+  }
+  const alignNote=alignment.total?(' · anchors '+alignment.matched+'/'+alignment.total):'';
   const recognizeRect=async(key,r)=>{
-    total++;$('photoStatus').textContent='Defined-layout extraction: '+key+' ('+total+')…';
-    const nativeText=textFromNativePdfRegion(nativeMap,r);
-    if(nativeText){
-      const np=parseAreaValue(key,nativeText);
-      if(np){parsed[key]={value:np.value,confidence:100,rawText:nativeText,source:'Native PDF text · defined area',reviewRequired:false};return}
-    }
-    const crop=await cropNormalizedPadded(dataUrl,r,key),field=await recognizeDefinedField(worker,key,crop);
-    if(field.value!==''&&field.value!=null){parsed[key]=field;if(field.reviewRequired)reviewCount++}
+    total++;$('photoStatus').textContent='Defined-layout OCR: '+key+' ('+total+')'+alignNote+'…';
+    const mapped=mapAlignedRect(alignment.transform,r),crop=await cropNormalized(dataUrl,mapped),field=await recognizeDefinedField(worker,key,crop);
+    if(field.value!==''&&field.value!=null){field.source=(field.source||'Defined area')+alignNote;parsed[key]=field;if(field.reviewRequired||alignment.total&&alignment.matched<2)reviewCount++}
     else reviewCount++;
   };
   for(const r of activeLayout.regions||[])await recognizeRect(r.key,r.rect);
   for(const [mat,row] of Object.entries(activeLayout.material_rows||{})){
     if(row?.y1==null)continue;const map=MATERIAL_FIELD_KEYS[mat]||{};
-    const contextual=nativeMap?{}:await recognizeMaterialRow(worker,dataUrl,row,mat).catch(()=>({}));
-    for(const [slot,col] of Object.entries(row.columns||{})){
-      const key=map[slot];if(!key)continue;
-      const rect={x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2};
-      const nativeText=textFromNativePdfRegion(nativeMap,rect);
-      if(nativeText){
-        const np=parseAreaValue(key,nativeText);
-        if(np){parsed[key]={value:np.value,confidence:100,rawText:nativeText,source:'Native PDF text · defined material area',reviewRequired:false};continue}
-      }
-      const crop=await cropNormalizedPadded(dataUrl,rect,key),field=await recognizeDefinedField(worker,key,crop);
-      const rowField=contextual[key];
-      if(rowField){
-        const fieldBad=field.value===''||field.confidence<72;
-        const agree=String(rowField.value)===String(field.value);
-        if(fieldBad||rowField.confidence>field.confidence+8||agree){
-          parsed[key]={...rowField,reviewRequired:!agree&&rowField.confidence<82};
-          if(parsed[key].reviewRequired)reviewCount++;
-          continue;
-        }
-      }
-      if(field.value!==''&&field.value!=null){parsed[key]=field;if(field.reviewRequired)reviewCount++}
-      else reviewCount++;
-    }
+    for(const [slot,col] of Object.entries(row.columns||{})){const key=map[slot];if(!key)continue;await recognizeRect(key,{x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2})}
   }
-  return{text:nativeMap?'Native PDF text + defined-layout OCR':'Defined-layout contextual OCR',parsed,reviewCount};
+  return{text:'Area-defined extraction'+alignNote,parsed,reviewCount,alignment};
 }
 
 function renderFields(){
@@ -867,22 +890,7 @@ async function renderPdfPageData(pageNumber,updateUi=true){
   const canvas=document.createElement('canvas');
   canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
   const ctx=canvas.getContext('2d',{alpha:false});
-  const textPromise=page.getTextContent().catch(()=>null);
   await page.render({canvasContext:ctx,viewport}).promise;
-  const textContent=await textPromise;
-  if(textContent?.items?.length){
-    const map=[];
-    for(const item of textContent.items){
-      if(!item?.str?.trim())continue;
-      try{
-        const tx=pdfJs.Util.transform(viewport.transform,item.transform);
-        const x=tx[4],baselineY=tx[5],w=Math.abs((item.width||0)*scale),h=Math.max(4,Math.abs((item.height||0)*scale),Math.abs(tx[3]||0));
-        const box={str:item.str,x1:Math.max(0,Math.min(1,x/viewport.width)),x2:Math.max(0,Math.min(1,(x+w)/viewport.width)),y1:Math.max(0,Math.min(1,(baselineY-h)/viewport.height)),y2:Math.max(0,Math.min(1,baselineY/viewport.height))};
-        if(box.x2>box.x1&&box.y2>=box.y1)map.push(box);
-      }catch(_e){}
-    }
-    if(map.length)pdfNativeTextMaps.set(pageNumber,map);
-  }else pdfNativeTextMaps.delete(pageNumber);
   const dataUrl=canvas.toDataURL('image/png',0.96);
   if(updateUi){
     pdfPageNumber=pageNumber;photoDataUrl=dataUrl;formatReferenceDataUrl=dataUrl;rotation=0;
@@ -898,12 +906,12 @@ async function openPdfFile(file){
   const lib=await loadPdfJs();
   const bytes=new Uint8Array(await file.arrayBuffer());
   const task=lib.getDocument({data:bytes});
-  pdfDoc=await task.promise;pdfPageCount=pdfDoc.numPages;pdfPageNumber=1;pdfPageResults.clear();pdfNativeTextMaps.clear();
+  pdfDoc=await task.promise;pdfPageCount=pdfDoc.numPages;pdfPageNumber=1;pdfPageResults.clear();
   $('pdfControls').style.display='flex';
   await renderPdfPageData(1,true);
 }
 function resetPdfState(){
-  pdfDoc=null;pdfPageNumber=1;pdfPageCount=0;pdfPageResults.clear();pdfNativeTextMaps.clear();
+  pdfDoc=null;pdfPageNumber=1;pdfPageCount=0;pdfPageResults.clear();
   $('pdfControls').style.display='none';
 }
 async function ensureOcrWorker(){
@@ -917,9 +925,9 @@ async function ensureOcrWorker(){
   try{await ocrWorker.setParameters({preserve_interword_spaces:'1'});}catch(_e){}
   return ocrWorker;
 }
-async function recognizeTicketImage(dataUrl,nativeMap=null){
+async function recognizeTicketImage(dataUrl){
   if(layoutHasDefinitions()){
-    return await extractWithSavedAreas(dataUrl,nativeMap);
+    return await extractWithSavedAreas(dataUrl);
   }
   const processed=await preprocessImage(dataUrl);
   const worker=await ensureOcrWorker();
@@ -954,7 +962,7 @@ async function reextractQueuedTicketsWithActiveLayout(){
       const src=await loadQueueSource(old?._sourceId).catch(()=>null);
       if(!src?.dataUrl){skipped++;continue}
       try{
-        const result=await extractWithSavedAreas(src.dataUrl,src.meta?.nativeTextMap||null);
+        const result=await extractWithSavedAreas(src.dataUrl);
         const fresh=ticketFromParsed(result.parsed);
         fresh._sourceId=old._sourceId;
         fresh._layoutId=activeLayout.id||null;
@@ -1000,10 +1008,10 @@ async function extractAllPdfPages(){
       $('photoStatus').textContent='PDF page '+p+' of '+pdfPageCount+' · preparing…';
       const img=await renderPdfPageData(p,false);
       $('photoStatus').textContent='PDF page '+p+' of '+pdfPageCount+' · OCR…';
-      const nativeMap=pdfNativeTextMaps.get(p)||null;const result=await recognizeTicketImage(img,nativeMap);
+      const result=await recognizeTicketImage(img);
       pdfPageResults.set(p,result);
       const t=ticketFromParsed(result.parsed);
-      await attachSourceToTicket(t,img,{kind:'pdf_page',page:p,fileName:ticketSourceFile?.name||'',nativeTextMap:nativeMap});
+      await attachSourceToTicket(t,img,{kind:'pdf_page',page:p,fileName:ticketSourceFile?.name||''});
       if(layoutHasDefinitions()){t._layoutId=activeLayout.id||null;t._layoutName=activeLayout.name||'';t._extractionMode='defined_layout';t._extractedAt=new Date().toISOString()}
       queue.push(t);added++;persistQueue();renderQueue();
     }
@@ -1032,7 +1040,7 @@ async function runOCR(){
   if(!photoDataUrl) return;
   $('extractBtn').disabled=true;$('ocrProgress').style.display='block';$('ocrProgress').value=0;$('photoStatus').textContent='Preparing ticket…';
   try{
-    const result=await recognizeTicketImage(photoDataUrl,pdfDoc?pdfNativeTextMaps.get(pdfPageNumber)||null:null);
+    const result=await recognizeTicketImage(photoDataUrl);
     $('ocrText').value=result.text; applyParsed(result.parsed);
     if(pdfDoc)pdfPageResults.set(pdfPageNumber,result);
     const rc=Object.values(result.parsed||{}).filter(x=>x.reviewRequired).length;$('photoStatus').innerHTML='<span class="'+(rc?'warning':'ok')+'">OCR complete'+(pdfDoc?' for PDF page '+pdfPageNumber:'')+(layoutHasDefinitions()?' using defined layout':'')+'. '+(rc?rc+' field(s) need review.':'Review detected values below.')+'</span>';
@@ -1047,7 +1055,7 @@ function validateTicket(t){const errs=[];if(!t.ticket)errs.push('Ticket # is bla
 async function addQueue(){
   const t=formTicket(),errs=validateTicket(t); if(errs.length&&!confirm(errs.join('\n')+'\n\nAdd anyway?')) return;
   if(lastDetected&&Object.keys(lastDetected).length){t._fieldMeta={};let rc=0;for(const [k,x] of Object.entries(lastDetected)){t._fieldMeta[k]={confidence:x.confidence??null,rawText:x.rawText??'',source:x.source??'',reviewRequired:!!x.reviewRequired};if(x.reviewRequired)rc++}t._reviewRequired=rc}
-  await attachSourceToTicket(t,photoDataUrl,{kind:pdfDoc?'pdf_page':'image',page:pdfDoc?pdfPageNumber:null,fileName:ticketSourceFile?.name||'',nativeTextMap:pdfDoc?(pdfNativeTextMaps.get(pdfPageNumber)||null):null});
+  await attachSourceToTicket(t,photoDataUrl,{kind:pdfDoc?'pdf_page':'image',page:pdfDoc?pdfPageNumber:null,fileName:ticketSourceFile?.name||''});
   if(layoutHasDefinitions()){t._layoutId=activeLayout.id||null;t._layoutName=activeLayout.name||'';t._extractionMode='defined_layout';t._extractedAt=new Date().toISOString()}
   queue.push(t); persistQueue(); renderQueue(); clearForm(); $('ocrText').value='';
 }
