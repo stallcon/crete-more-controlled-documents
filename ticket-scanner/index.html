@@ -299,7 +299,7 @@ const MATERIALS = {
 let workbookBuffer = null, workbookName = '', workbookMeta = null;
 let photoDataUrl = null, rotation = 0, queue = [], lastDetected = {};
 let ocrWorker = null, ticketSourceFile = null;
-let pdfJs = null, pdfDoc = null, pdfPageNumber = 1, pdfPageCount = 0, pdfPageResults = new Map();
+let pdfJs = null, pdfDoc = null, pdfPageNumber = 1, pdfPageCount = 0, pdfPageResults = new Map(), pdfNativeTextMaps = new Map();
 let areaLayouts=[],activeLayout={id:null,name:'',regions:[],material_rows:{}},defineTarget=null,pendingRect=null,selectorScale=1;
 let pointerStart=null,pinchStart=null,formatReferenceDataUrl=null;
 
@@ -620,24 +620,96 @@ async function recognizeDefinedField(worker,key,crop){
   const conf=Math.round(best.confidence||0),reviewRequired=conf<(fieldOcrRule(key).kind==='text'?65:72)||best.parsed.repair!=='direct'&&best.parsed.repair!=='text'&&best.parsed.repair!=='ticket';
   return{value:best.parsed.value,confidence:conf,rawText:best.text,source:'Defined area'+(best.parsed.repair&&best.parsed.repair!=='direct'?' · '+best.parsed.repair:''),reviewRequired};
 }
-async function extractWithSavedAreas(dataUrl){
+function textFromNativePdfRegion(nativeMap,r){
+  if(!Array.isArray(nativeMap)||!nativeMap.length)return'';
+  const padX=Math.min(.008,Math.max(0,(r.x2-r.x1)*.08)),padY=Math.min(.006,Math.max(0,(r.y2-r.y1)*.18));
+  const items=nativeMap.filter(it=>{
+    const cx=(it.x1+it.x2)/2,cy=(it.y1+it.y2)/2;
+    return cx>=r.x1-padX&&cx<=r.x2+padX&&cy>=r.y1-padY&&cy<=r.y2+padY;
+  });
+  items.sort((a,b)=>Math.abs(a.y1-b.y1)>.008?a.y1-b.y1:a.x1-b.x1);
+  return items.map(x=>x.str).join(' ').replace(/\s+/g,' ').trim();
+}
+async function cropNormalizedPadded(dataUrl,r,key){
+  const rule=fieldOcrRule(key),rx=Math.max(0,r.x2-r.x1),ry=Math.max(0,r.y2-r.y1);
+  const px=rule.kind==='text'?Math.min(.012,rx*.16):Math.min(.006,rx*.10);
+  const py=Math.min(.012,Math.max(.004,ry*.35));
+  return cropNormalized(dataUrl,{x1:Math.max(0,r.x1-px),x2:Math.min(1,r.x2+px),y1:Math.max(0,r.y1-py),y2:Math.min(1,r.y2+py)});
+}
+function parseTsvWords(tsv){
+  const lines=String(tsv||'').trim().split(/\r?\n/);if(lines.length<2)return[];
+  const headers=lines[0].split('\t'),idx={};headers.forEach((h,i)=>idx[h]=i);
+  const out=[];
+  for(let i=1;i<lines.length;i++){
+    const p=lines[i].split('\t'),txt=(p[idx.text]||'').trim();if(!txt)continue;
+    const left=Number(p[idx.left]),top=Number(p[idx.top]),width=Number(p[idx.width]),height=Number(p[idx.height]),conf=Number(p[idx.conf]);
+    if([left,top,width,height].some(v=>!Number.isFinite(v)))continue;
+    out.push({text:txt,left,top,width,height,conf:Number.isFinite(conf)?conf:0});
+  }
+  return out;
+}
+async function recognizeMaterialRow(worker,dataUrl,row,mat){
+  const rowRect={x1:0,x2:1,y1:row.y1,y2:row.y2};
+  const rowCrop=await cropNormalizedPadded(dataUrl,rowRect,mat+'_row');
+  const prepared=await prepareOcrCrop(rowCrop,'gray');
+  await worker.setParameters({tessedit_pageseg_mode:(Tesseract.PSM&&Tesseract.PSM.SINGLE_LINE)||'7',preserve_interword_spaces:'1',tessedit_char_whitelist:'',user_defined_dpi:'300'});
+  const res=await worker.recognize(prepared,{}, {text:true,tsv:true});
+  const words=parseTsvWords(res.data.tsv),map=MATERIAL_FIELD_KEYS[mat]||{},results={};
+  if(!words.length)return results;
+  const maxX=Math.max(...words.map(w=>w.left+w.width),1);
+  for(const [slot,col] of Object.entries(row.columns||{})){
+    const key=map[slot];if(!key)continue;
+    const selected=words.filter(w=>{const cx=(w.left+w.width/2)/maxX;return cx>=Math.max(0,col.x1-.015)&&cx<=Math.min(1,col.x2+.015)});
+    if(!selected.length)continue;
+    const text=selected.map(w=>w.text).join(' '),parsed=parseAreaValue(key,text);
+    if(!parsed)continue;
+    const conf=Math.round(selected.reduce((a,w)=>a+Math.max(0,w.conf),0)/selected.length);
+    results[key]={value:parsed.value,confidence:conf,rawText:text,source:'Defined material row · contextual OCR',reviewRequired:conf<70};
+  }
+  return results;
+}
+async function extractWithSavedAreas(dataUrl,nativeMap=null){
   if(!layoutHasDefinitions())throw Error('No defined areas in selected layout.');
   const worker=await ensureOcrWorker(),parsed={};let reviewCount=0,total=0;
   const recognizeRect=async(key,r)=>{
-    total++;$('photoStatus').textContent='Defined-layout OCR: '+key+' ('+total+')…';
-    const crop=await cropNormalized(dataUrl,r),field=await recognizeDefinedField(worker,key,crop);
+    total++;$('photoStatus').textContent='Defined-layout extraction: '+key+' ('+total+')…';
+    const nativeText=textFromNativePdfRegion(nativeMap,r);
+    if(nativeText){
+      const np=parseAreaValue(key,nativeText);
+      if(np){parsed[key]={value:np.value,confidence:100,rawText:nativeText,source:'Native PDF text · defined area',reviewRequired:false};return}
+    }
+    const crop=await cropNormalizedPadded(dataUrl,r,key),field=await recognizeDefinedField(worker,key,crop);
     if(field.value!==''&&field.value!=null){parsed[key]=field;if(field.reviewRequired)reviewCount++}
     else reviewCount++;
   };
   for(const r of activeLayout.regions||[])await recognizeRect(r.key,r.rect);
   for(const [mat,row] of Object.entries(activeLayout.material_rows||{})){
     if(row?.y1==null)continue;const map=MATERIAL_FIELD_KEYS[mat]||{};
+    const contextual=nativeMap?{}:await recognizeMaterialRow(worker,dataUrl,row,mat).catch(()=>({}));
     for(const [slot,col] of Object.entries(row.columns||{})){
       const key=map[slot];if(!key)continue;
-      await recognizeRect(key,{x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2});
+      const rect={x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2};
+      const nativeText=textFromNativePdfRegion(nativeMap,rect);
+      if(nativeText){
+        const np=parseAreaValue(key,nativeText);
+        if(np){parsed[key]={value:np.value,confidence:100,rawText:nativeText,source:'Native PDF text · defined material area',reviewRequired:false};continue}
+      }
+      const crop=await cropNormalizedPadded(dataUrl,rect,key),field=await recognizeDefinedField(worker,key,crop);
+      const rowField=contextual[key];
+      if(rowField){
+        const fieldBad=field.value===''||field.confidence<72;
+        const agree=String(rowField.value)===String(field.value);
+        if(fieldBad||rowField.confidence>field.confidence+8||agree){
+          parsed[key]={...rowField,reviewRequired:!agree&&rowField.confidence<82};
+          if(parsed[key].reviewRequired)reviewCount++;
+          continue;
+        }
+      }
+      if(field.value!==''&&field.value!=null){parsed[key]=field;if(field.reviewRequired)reviewCount++}
+      else reviewCount++;
     }
   }
-  return{text:'Area-defined extraction',parsed,reviewCount};
+  return{text:nativeMap?'Native PDF text + defined-layout OCR':'Defined-layout contextual OCR',parsed,reviewCount};
 }
 
 function renderFields(){
@@ -793,7 +865,22 @@ async function renderPdfPageData(pageNumber,updateUi=true){
   const canvas=document.createElement('canvas');
   canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
   const ctx=canvas.getContext('2d',{alpha:false});
+  const textPromise=page.getTextContent().catch(()=>null);
   await page.render({canvasContext:ctx,viewport}).promise;
+  const textContent=await textPromise;
+  if(textContent?.items?.length){
+    const map=[];
+    for(const item of textContent.items){
+      if(!item?.str?.trim())continue;
+      try{
+        const tx=pdfJs.Util.transform(viewport.transform,item.transform);
+        const x=tx[4],baselineY=tx[5],w=Math.abs((item.width||0)*scale),h=Math.max(4,Math.abs((item.height||0)*scale),Math.abs(tx[3]||0));
+        const box={str:item.str,x1:Math.max(0,Math.min(1,x/viewport.width)),x2:Math.max(0,Math.min(1,(x+w)/viewport.width)),y1:Math.max(0,Math.min(1,(baselineY-h)/viewport.height)),y2:Math.max(0,Math.min(1,baselineY/viewport.height))};
+        if(box.x2>box.x1&&box.y2>=box.y1)map.push(box);
+      }catch(_e){}
+    }
+    if(map.length)pdfNativeTextMaps.set(pageNumber,map);
+  }else pdfNativeTextMaps.delete(pageNumber);
   const dataUrl=canvas.toDataURL('image/png',0.96);
   if(updateUi){
     pdfPageNumber=pageNumber;photoDataUrl=dataUrl;formatReferenceDataUrl=dataUrl;rotation=0;
@@ -809,12 +896,12 @@ async function openPdfFile(file){
   const lib=await loadPdfJs();
   const bytes=new Uint8Array(await file.arrayBuffer());
   const task=lib.getDocument({data:bytes});
-  pdfDoc=await task.promise;pdfPageCount=pdfDoc.numPages;pdfPageNumber=1;pdfPageResults.clear();
+  pdfDoc=await task.promise;pdfPageCount=pdfDoc.numPages;pdfPageNumber=1;pdfPageResults.clear();pdfNativeTextMaps.clear();
   $('pdfControls').style.display='flex';
   await renderPdfPageData(1,true);
 }
 function resetPdfState(){
-  pdfDoc=null;pdfPageNumber=1;pdfPageCount=0;pdfPageResults.clear();
+  pdfDoc=null;pdfPageNumber=1;pdfPageCount=0;pdfPageResults.clear();pdfNativeTextMaps.clear();
   $('pdfControls').style.display='none';
 }
 async function ensureOcrWorker(){
@@ -828,9 +915,9 @@ async function ensureOcrWorker(){
   try{await ocrWorker.setParameters({preserve_interword_spaces:'1'});}catch(_e){}
   return ocrWorker;
 }
-async function recognizeTicketImage(dataUrl){
+async function recognizeTicketImage(dataUrl,nativeMap=null){
   if(layoutHasDefinitions()){
-    return await extractWithSavedAreas(dataUrl);
+    return await extractWithSavedAreas(dataUrl,nativeMap);
   }
   const processed=await preprocessImage(dataUrl);
   const worker=await ensureOcrWorker();
@@ -865,7 +952,7 @@ async function reextractQueuedTicketsWithActiveLayout(){
       const src=await loadQueueSource(old?._sourceId).catch(()=>null);
       if(!src?.dataUrl){skipped++;continue}
       try{
-        const result=await extractWithSavedAreas(src.dataUrl);
+        const result=await extractWithSavedAreas(src.dataUrl,src.meta?.nativeTextMap||null);
         const fresh=ticketFromParsed(result.parsed);
         fresh._sourceId=old._sourceId;
         fresh._layoutId=activeLayout.id||null;
@@ -911,10 +998,10 @@ async function extractAllPdfPages(){
       $('photoStatus').textContent='PDF page '+p+' of '+pdfPageCount+' · preparing…';
       const img=await renderPdfPageData(p,false);
       $('photoStatus').textContent='PDF page '+p+' of '+pdfPageCount+' · OCR…';
-      const result=await recognizeTicketImage(img);
+      const nativeMap=pdfNativeTextMaps.get(p)||null;const result=await recognizeTicketImage(img,nativeMap);
       pdfPageResults.set(p,result);
       const t=ticketFromParsed(result.parsed);
-      await attachSourceToTicket(t,img,{kind:'pdf_page',page:p,fileName:ticketSourceFile?.name||''});
+      await attachSourceToTicket(t,img,{kind:'pdf_page',page:p,fileName:ticketSourceFile?.name||'',nativeTextMap:nativeMap});
       if(layoutHasDefinitions()){t._layoutId=activeLayout.id||null;t._layoutName=activeLayout.name||'';t._extractionMode='defined_layout';t._extractedAt=new Date().toISOString()}
       queue.push(t);added++;persistQueue();renderQueue();
     }
@@ -943,7 +1030,7 @@ async function runOCR(){
   if(!photoDataUrl) return;
   $('extractBtn').disabled=true;$('ocrProgress').style.display='block';$('ocrProgress').value=0;$('photoStatus').textContent='Preparing ticket…';
   try{
-    const result=await recognizeTicketImage(photoDataUrl);
+    const result=await recognizeTicketImage(photoDataUrl,pdfDoc?pdfNativeTextMaps.get(pdfPageNumber)||null:null);
     $('ocrText').value=result.text; applyParsed(result.parsed);
     if(pdfDoc)pdfPageResults.set(pdfPageNumber,result);
     const rc=Object.values(result.parsed||{}).filter(x=>x.reviewRequired).length;$('photoStatus').innerHTML='<span class="'+(rc?'warning':'ok')+'">OCR complete'+(pdfDoc?' for PDF page '+pdfPageNumber:'')+(layoutHasDefinitions()?' using defined layout':'')+'. '+(rc?rc+' field(s) need review.':'Review detected values below.')+'</span>';
@@ -958,7 +1045,7 @@ function validateTicket(t){const errs=[];if(!t.ticket)errs.push('Ticket # is bla
 async function addQueue(){
   const t=formTicket(),errs=validateTicket(t); if(errs.length&&!confirm(errs.join('\n')+'\n\nAdd anyway?')) return;
   if(lastDetected&&Object.keys(lastDetected).length){t._fieldMeta={};let rc=0;for(const [k,x] of Object.entries(lastDetected)){t._fieldMeta[k]={confidence:x.confidence??null,rawText:x.rawText??'',source:x.source??'',reviewRequired:!!x.reviewRequired};if(x.reviewRequired)rc++}t._reviewRequired=rc}
-  await attachSourceToTicket(t,photoDataUrl,{kind:pdfDoc?'pdf_page':'image',page:pdfDoc?pdfPageNumber:null,fileName:ticketSourceFile?.name||''});
+  await attachSourceToTicket(t,photoDataUrl,{kind:pdfDoc?'pdf_page':'image',page:pdfDoc?pdfPageNumber:null,fileName:ticketSourceFile?.name||'',nativeTextMap:pdfDoc?(pdfNativeTextMaps.get(pdfPageNumber)||null):null});
   if(layoutHasDefinitions()){t._layoutId=activeLayout.id||null;t._layoutName=activeLayout.name||'';t._extractionMode='defined_layout';t._extractedAt=new Date().toISOString()}
   queue.push(t); persistQueue(); renderQueue(); clearForm(); $('ocrText').value='';
 }
