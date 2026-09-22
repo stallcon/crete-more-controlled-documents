@@ -82,7 +82,7 @@ body.formatOpen{overflow:hidden}
         <div id="formatPanel" style="display:none">
           <div class="formatWorkspaceHeader">
             <div><h2>Ticket Format Selector</h2><div class="selectorHelp">Define areas precisely on a large reference ticket. Material workflow: define the row first, then Name / Batched Qty / Moisture / Water.</div></div>
-            <button id="closeFormat" class="secondary">Close / Return to Scanner</button>
+            <div class="row"><button id="applyLayoutQueue" class="secondary">Re-extract Queue With Layout</button><button id="closeFormat" class="secondary">Close / Return to Scanner</button></div>
           </div>
           <div class="formatWorkspaceBody">
           <div class="layoutLine">
@@ -138,7 +138,7 @@ body.formatOpen{overflow:hidden}
   </section>
 
   <section class="card" style="margin-top:18px">
-    <div class="step">Step 4</div><h2>Ticket queue and Excel export</h2><div class="selectorHelp" style="margin-bottom:10px">Use <b>Define Layout</b> on any queued ticket to reopen its original image/PDF page in the large format selector.</div>
+    <div class="step">Step 4</div><h2>Ticket queue and Excel export</h2><div class="selectorHelp" style="margin-bottom:10px">Use <b>Define Layout</b> on any queued ticket to reopen its original image/PDF page in the large format selector. Once a layout is saved, every queued ticket is automatically re-extracted from its original source using that layout.</div><div id="layoutApplyStatus" class="status"></div>
     <div class="tableWrap"><table><thead><tr><th>#</th><th>Ticket</th><th>Volume</th><th>Coarse</th><th>Fine</th><th>Cement</th><th>SCM #1</th><th>Water</th><th>W/C</th><th>Mix</th><th></th></tr></thead><tbody id="queueBody"><tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr></tbody></table></div>
     <div class="notice" style="margin-top:12px">Each export uses a clean copy of your saved <b>Ticket Importer.xlsx</b> template. The <b>Tickets</b> sheet keeps row 1 headers, removes all prior ticket rows, writes only this queue starting at row 2, downloads the workbook, then clears the queue.</div>
     <div class="row" style="margin-top:14px"><button id="exportBtn" disabled>Export Ticket Importer.xlsx</button><button id="clearQueueBtn" class="danger" disabled>Clear queue</button></div>
@@ -358,7 +358,9 @@ async function saveAreaLayout(){
     rows=await sbRest('/rest/v1/cm_ticket_area_layouts',{method:'POST',headers:{'content-type':'application/json',prefer:'return=representation'},body:JSON.stringify(payload)});
   }
   const row=rows?.[0];if(row)activeLayout={id:row.id,name:row.name,regions:row.regions||[],material_rows:row.material_rows||{}};
-  await loadAreaLayouts();$('layoutSelect').value=activeLayout.id||'';$('selectorStatus').innerHTML='<span class="ok">Layout saved to your account.</span>';
+  await loadAreaLayouts();$('layoutSelect').value=activeLayout.id||'';
+  $('selectorStatus').innerHTML='<span class="ok">Layout saved. Applying it to all queued tickets…</span>';
+  await reextractQueuedTicketsWithActiveLayout();
 }
 async function deleteAreaLayout(){
   if(!activeLayout.id)return;
@@ -666,9 +668,8 @@ async function ensureOcrWorker(){
   return ocrWorker;
 }
 async function recognizeTicketImage(dataUrl){
-  const hasLayout=(activeLayout.regions?.length||0)+Object.keys(activeLayout.material_rows||{}).length>0;
-  if(hasLayout){
-    try{return await extractWithSavedAreas(dataUrl)}catch(e){console.warn('Defined-area extraction fallback',e)}
+  if(layoutHasDefinitions()){
+    return await extractWithSavedAreas(dataUrl);
   }
   const processed=await preprocessImage(dataUrl);
   const worker=await ensureOcrWorker();
@@ -680,6 +681,45 @@ function ticketFromParsed(parsed){
   const out={};
   FIELD_DEFS.forEach(d=>{const x=parsed[d.key];out[d.key]=x&&x.value!==undefined&&x.value!==null?x.value:'';});
   return out;
+}
+function layoutHasDefinitions(){
+  return (activeLayout.regions?.length||0)>0 || Object.values(activeLayout.material_rows||{}).some(r=>r&&r.y1!=null&&Object.keys(r.columns||{}).length);
+}
+async function reextractQueuedTicketsWithActiveLayout(){
+  if(!layoutHasDefinitions())throw Error('Define at least one extraction area before applying the layout.');
+  if(!queue.length){
+    if($('layoutApplyStatus'))$('layoutApplyStatus').innerHTML='<span class="ok">Layout is active. New tickets will use this defined format.</span>';
+    return {updated:0,skipped:0};
+  }
+  const btn=$('applyLayoutQueue');if(btn)btn.disabled=true;
+  let updated=0,skipped=0,failed=0;
+  try{
+    for(let i=0;i<queue.length;i++){
+      const old=queue[i];
+      if($('layoutApplyStatus'))$('layoutApplyStatus').textContent='Applying layout to ticket '+(i+1)+' of '+queue.length+'…';
+      if($('selectorStatus'))$('selectorStatus').textContent='Applying saved layout to queued ticket '+(i+1)+' of '+queue.length+'…';
+      const src=await loadQueueSource(old?._sourceId).catch(()=>null);
+      if(!src?.dataUrl){skipped++;continue}
+      try{
+        const result=await extractWithSavedAreas(src.dataUrl);
+        const fresh=ticketFromParsed(result.parsed);
+        fresh._sourceId=old._sourceId;
+        fresh._layoutId=activeLayout.id||null;
+        fresh._layoutName=activeLayout.name||$('layoutName')?.value||'';
+        fresh._extractionMode='defined_layout';
+        fresh._extractedAt=new Date().toISOString();
+        queue[i]=fresh;updated++;
+        persistQueue();renderQueue();
+      }catch(e){
+        console.error('Layout extraction failed for queue item',i,e);failed++;
+      }
+    }
+    persistQueue();renderQueue();
+    const msg='Layout applied: '+updated+' ticket(s) re-extracted'+(skipped?' · '+skipped+' source(s) unavailable':'')+(failed?' · '+failed+' failed':'')+'.';
+    if($('layoutApplyStatus'))$('layoutApplyStatus').innerHTML='<span class="'+(failed?'warning':'ok')+'">'+escapeHtml(msg)+'</span>';
+    if($('selectorStatus'))$('selectorStatus').innerHTML='<span class="'+(failed?'warning':'ok')+'">'+escapeHtml(msg)+' All new tickets will use this layout automatically.</span>';
+    return {updated,skipped,failed};
+  }finally{if(btn)btn.disabled=false}
 }
 async function editQueuedTicket(index){
   const t=queue[index];if(!t)return;
@@ -711,6 +751,7 @@ async function extractAllPdfPages(){
       pdfPageResults.set(p,result);
       const t=ticketFromParsed(result.parsed);
       await attachSourceToTicket(t,img,{kind:'pdf_page',page:p,fileName:ticketSourceFile?.name||''});
+      if(layoutHasDefinitions()){t._layoutId=activeLayout.id||null;t._layoutName=activeLayout.name||'';t._extractionMode='defined_layout';t._extractedAt=new Date().toISOString()}
       queue.push(t);added++;persistQueue();renderQueue();
     }
     await renderPdfPageData(pdfPageNumber,true);
@@ -753,11 +794,12 @@ function validateTicket(t){const errs=[];if(!t.ticket)errs.push('Ticket # is bla
 async function addQueue(){
   const t=formTicket(),errs=validateTicket(t); if(errs.length&&!confirm(errs.join('\n')+'\n\nAdd anyway?')) return;
   await attachSourceToTicket(t,photoDataUrl,{kind:pdfDoc?'pdf_page':'image',page:pdfDoc?pdfPageNumber:null,fileName:ticketSourceFile?.name||''});
+  if(layoutHasDefinitions()){t._layoutId=activeLayout.id||null;t._layoutName=activeLayout.name||'';t._extractionMode='defined_layout';t._extractedAt=new Date().toISOString()}
   queue.push(t); persistQueue(); renderQueue(); clearForm(); $('ocrText').value='';
 }
 function renderQueue(){
   const b=$('queueBody'); b.innerHTML=''; if(!queue.length){b.innerHTML='<tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr>';}
-  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><strong>${esc(t.ticket)}</strong></td><td>${esc(t.load_size)}</td><td>${esc(t.coarse_name)} · ${esc(t.rock_batched)} · ${esc(t.rock_moisture)}%</td><td>${esc(t.fine_name)} · ${esc(t.sand_batched)} · ${esc(t.sand_moisture)}%</td><td>${esc(t.cement_name)} · ${esc(t.cement_batched)}</td><td>${esc(t.scm1_name)} · ${esc(t.flyash_batched)}</td><td>${esc(t.water_batched)}</td><td>${esc(t.wc_ratio_report)}</td><td>${esc(t.mix_code)}</td><td><button class="secondary" data-layout="${i}" style="padding:6px 8px">Define Layout</button> <button class="secondary" data-edit="${i}" style="padding:6px 8px">Edit</button> <button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
+  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><strong>${esc(t.ticket)}</strong><div class="selectorHelp">${t._extractionMode==='defined_layout'?'Defined layout'+(t._layoutName?' · '+esc(t._layoutName):''):'Generic OCR'}</div></td><td>${esc(t.load_size)}</td><td>${esc(t.coarse_name)} · ${esc(t.rock_batched)} · ${esc(t.rock_moisture)}%</td><td>${esc(t.fine_name)} · ${esc(t.sand_batched)} · ${esc(t.sand_moisture)}%</td><td>${esc(t.cement_name)} · ${esc(t.cement_batched)}</td><td>${esc(t.scm1_name)} · ${esc(t.flyash_batched)}</td><td>${esc(t.water_batched)}</td><td>${esc(t.wc_ratio_report)}</td><td>${esc(t.mix_code)}</td><td><button class="secondary" data-layout="${i}" style="padding:6px 8px">Define Layout</button> <button class="secondary" data-edit="${i}" style="padding:6px 8px">Edit</button> <button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
   b.querySelectorAll('[data-layout]').forEach(x=>x.onclick=()=>defineLayoutFromQueued(Number(x.dataset.layout)));
   b.querySelectorAll('[data-edit]').forEach(x=>x.onclick=()=>editQueuedTicket(Number(x.dataset.edit)));
   b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=async()=>{const i=Number(x.dataset.rm),t=queue[i];queue.splice(i,1);persistQueue();renderQueue();await deleteQueueSource(t?._sourceId).catch(()=>{})});
@@ -852,6 +894,7 @@ $('closeFormat').onclick=closeFormatWorkspace;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('formatPanel').style.display!=='none')closeFormatWorkspace()});
 $('layoutSelect').onchange=e=>selectLayoutById(e.target.value);
 $('saveLayout').onclick=()=>saveAreaLayout().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
+$('applyLayoutQueue').onclick=()=>reextractQueuedTicketsWithActiveLayout().catch(e=>{$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>';if($('layoutApplyStatus'))$('layoutApplyStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>'});
 $('deleteLayout').onclick=()=>deleteAreaLayout().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
 $('defineOther').onclick=()=>{defineTarget={kind:'other',key:$('otherItem').value};pendingRect=null;markActiveTarget($('defineOther'));$('selectorStatus').textContent='Drag a box around the selected item on the reference ticket.';$('saveDefinedItem').disabled=true;drawSelector()};
 $('saveDefinedItem').onclick=savePendingDefinition;
