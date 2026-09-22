@@ -539,7 +539,7 @@ function fieldOcrRule(key){
   if(key==='wc_ratio_report')return{kind:'number',min:0.1,max:1.2,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
   if(key==='loaded_weight')return{kind:'number',min:1000,max:150000,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
   if(/moisture$/.test(key))return{kind:'number',min:-20,max:20,psm:'SINGLE_LINE',whitelist:'0123456789.,-%'};
-  if(/_water$/.test(key)||key==='total_water')return{kind:'number',min:-20000,max:20000,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
+  if(isWaterField(key))return{kind:'number',min:-20000,max:20000,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
   if(/batched$/.test(key)||['rock_batched','sand_batched','flyash_batched','wr','air','admix3','admix4','admix5'].includes(key))
     return{kind:'number',min:0,max:150000,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
   return{kind:'number',min:-150000,max:150000,psm:'SINGLE_LINE',whitelist:'0123456789.,-'};
@@ -549,16 +549,24 @@ function normalizeNumericOcr(s){
     .replace(/[OoQ]/g,'0')
     .replace(/[Il|]/g,'1')
     .replace(/[–—]/g,'-')
+    .replace(/(\d)\s*[,·•]\s*(\d)/g,'$1.$2')
+    .replace(/(\d)\s*\.\s*(\d)/g,'$1.$2')
+    .replace(/-\s+(\d)/g,'-$1')
+    .replace(/\s*%/g,'%')
     .replace(/\s+/g,' ')
     .trim();
 }
+function isMoistureField(key){return /moisture$/.test(key)}
+function isWaterField(key){return key==='water_batched'||key==='total_water'||/_water$/.test(key)}
+function strictColumnField(key){return isMoistureField(key)||isWaterField(key)}
 function decimalSensitiveField(key){
-  return key==='wc_ratio_report'||key==='load_size'||/moisture$/.test(key);
+  return key==='wc_ratio_report'||key==='load_size'||isMoistureField(key)||isWaterField(key);
 }
 function decimalPlacesForField(key){
   if(key==='wc_ratio_report')return[2,3];
   if(key==='load_size')return[1,2];
-  if(/moisture$/.test(key))return[1,2,3];
+  if(isMoistureField(key))return[1,2,3];
+  if(isWaterField(key))return[1,2];
   return[];
 }
 function numericCandidates(text,key){
@@ -596,13 +604,21 @@ function chooseNumericCandidate(text,key){
       if(x.value>=1&&x.value<=15)score+=10;
       if(x.places===1)score+=5;
     }
-    if(/moisture$/.test(key)){
-      if(Math.abs(x.value)<=10)score+=7;
-      if(x.places===2)score+=5;
-      if(x.places===1)score+=2;
-      // A no-dot direct value is intentionally not over-rewarded because 05/050
-      // are common OCR forms when the printed decimal disappears.
-      if(!x.hasDot&&x.tag==='direct')score-=4;
+    if(isMoistureField(key)){
+      if(Math.abs(x.value)<=10)score+=10;
+      if(x.places===2)score+=7;
+      if(x.places===1)score+=3;
+      if(x.hasPct)score+=5;
+      // Moisture must not default to a whole number just because the dot vanished.
+      if(!x.hasDot&&x.tag==='direct')score-=12;
+    }
+    if(isWaterField(key)){
+      // Water commonly appears as whole pounds, but decimal water contributions are valid.
+      if(x.tag==='direct')score+=8;
+      if(x.hasDot)score+=10;
+      if(Math.abs(x.value)<=2000)score+=3;
+      if(x.hasPct)score-=30;
+      if(x.tag.startsWith('decimal-repair'))score-=8;
     }
     if(x.tag.startsWith('decimal-repair'))score-=2;
     if(score>bestScore){best=x;bestScore=score}
@@ -778,14 +794,29 @@ function transformFromAnchorMatches(matches){
   if(matches.length===1){const m=matches[0];return{type:'affine',x:[1,0,m.cx-m.rx],y:[0,1,m.cy-m.ry]}}
   return null;
 }
-function wordsInsideRect(words,r){
-  const px=Math.min(.012,Math.max(.003,(r.x2-r.x1)*.12)),py=Math.min(.01,Math.max(.002,(r.y2-r.y1)*.25));
-  return words.filter(w=>w.x>=r.x1-px&&w.x<=r.x2+px&&w.y>=r.y1-py&&w.y<=r.y2+py&&w.conf>=25)
-    .sort((a,b)=>Math.abs(a.y-b.y)>.012?a.y-b.y:a.x-b.x);
+function wordsInsideRect(words,r,key=''){
+  const strict=strictColumnField(key);
+  const px=strict?Math.min(.0015,Math.max(0,(r.x2-r.x1)*.015)):Math.min(.012,Math.max(.003,(r.x2-r.x1)*.12));
+  const py=strict?Math.min(.006,Math.max(.0015,(r.y2-r.y1)*.15)):Math.min(.01,Math.max(.002,(r.y2-r.y1)*.25));
+  return words.filter(w=>{
+    const insideX=strict?(w.x>=r.x1-px&&w.x<=r.x2+px):(w.x>=r.x1-px&&w.x<=r.x2+px);
+    return insideX&&w.y>=r.y1-py&&w.y<=r.y2+py&&w.conf>=25;
+  }).sort((a,b)=>Math.abs(a.y-b.y)>.012?a.y-b.y:a.x-b.x);
+}
+function strictFieldText(key,selected,r){
+  if(!strictColumnField(key))return selected.map(w=>w.text).join(' ');
+  const numeric=selected.filter(w=>/[0-9OoQIl|.,·•%\-]/.test(w.text));
+  if(!numeric.length)return'';
+  const cx=(r.x1+r.x2)/2;
+  // Keep the numeric cluster nearest the center of the user-defined column.
+  numeric.sort((a,b)=>Math.abs(a.x-cx)-Math.abs(b.x-cx));
+  const primary=numeric[0],cluster=numeric.filter(w=>Math.abs(w.y-primary.y)<.018&&Math.abs(w.x-primary.x)<Math.max(.045,(r.x2-r.x1)*.75));
+  cluster.sort((a,b)=>a.x-b.x);
+  return cluster.map(w=>w.text).join(' ');
 }
 function parseFieldFromPageWords(key,words,r){
-  const selected=wordsInsideRect(words,r);if(!selected.length)return null;
-  const text=selected.map(w=>w.text).join(' ').replace(/\s+/g,' ').trim();
+  const selected=wordsInsideRect(words,r,key);if(!selected.length)return null;
+  const text=normalizeNumericOcr(strictFieldText(key,selected,r)||selected.map(w=>w.text).join(' '));
   const parsed=parseAreaValue(key,text);if(!parsed)return null;
   const conf=Math.round(selected.reduce((s,w)=>s+Math.max(0,w.conf),0)/selected.length);
   const rule=fieldOcrRule(key),decimalMissing=decimalSensitiveField(key)&&!parsed.decimalSeen;
@@ -812,10 +843,16 @@ async function extractWithSavedAreas(dataUrl){
     const mapped=mapAlignedRect(alignment.transform,r);
     let field=parseFieldFromPageWords(key,pageOcr.words,mapped);
     const weak=!field||field.value===''||field.confidence<(fieldOcrRule(key).kind==='text'?58:66)||(decimalSensitiveField(key)&&!field.decimalSeen);
-    if(weak){
+    const forceCategoryCheck=strictColumnField(key);
+    if(weak||forceCategoryCheck){
       const crop=await cropNormalized(dataUrl,mapped),fallback=await recognizeDefinedField(worker,key,crop);
-      if(!field||(decimalSensitiveField(key)&&fallback.decimalSeen&&!field.decimalSeen)||fallback.confidence>=field.confidence-3)field=fallback;
-      if(field)field.source=(field.source||'Defined area')+' · crop fallback';
+      const fallbackValid=fallback&&fallback.value!==''&&fallback.value!=null;
+      if(!field||
+         (isMoistureField(key)&&fallbackValid&&(fallback.decimalSeen||fallback.confidence>=field.confidence-8))||
+         (isWaterField(key)&&fallbackValid&&fallback.confidence>=Math.max(45,field.confidence-10))||
+         (decimalSensitiveField(key)&&fallbackValid&&fallback.decimalSeen&&!field.decimalSeen)||
+         (fallbackValid&&fallback.confidence>=field.confidence+4)) field=fallback;
+      if(field)field.source=(field.source||'Defined area')+(forceCategoryCheck?' · category-verified crop':' · crop fallback');
     }
     if(field&&field.value!==''&&field.value!=null){
       field.source=(field.source||'Defined area')+alignNote;
@@ -846,7 +883,8 @@ function renderFields(){
 
 function setField(key,value,source='',confidence=null,rawText=''){
   const el=$('f_'+key); if(!el || value===undefined || value===null || value==='') return;
-  el.value=String(value).replace(/,/g,'');
+  if(isMoistureField(key)&&Number.isFinite(Number(value)))el.value=Number(value).toFixed(2);
+  else el.value=String(value).replace(/,/g,'');
   const h=$('h_'+key);
   if(h){
     const conf=confidence==null?'':(' · '+Math.round(Number(conf))+'%');
@@ -899,7 +937,7 @@ function parseMoisture(lines,name){
   for(const line of lines){
     if(hasAny(line,aliases) && /moist|moisture|%mc|mc\b/i.test(line)){
       let nums=numTokens(line).filter(n=>n.value>=0 && n.value<=30);
-      if(nums.length){const n=nums[nums.length-1];return {value:n.value,source:line};}
+      if(nums.length){const n=nums[nums.length-1];return {value:Number(n.value.toFixed(2)),source:line};}
     }
   }
   return null;
