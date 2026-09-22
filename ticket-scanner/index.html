@@ -23,7 +23,23 @@
     .notice{padding:10px 12px;border-radius:8px;background:#fff8e6;border:1px solid #ead59d;font-size:12px;color:#654b0c}.footerNote{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.45}
     @media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}.advanced{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.fields,.advanced{grid-template-columns:1fr}.wide{grid-column:auto}}
   .loginGate{position:fixed;inset:0;z-index:9999;background:#f4f6f8;display:flex;align-items:flex-start;justify-content:center;padding:8vh 16px}.loginCard{width:min(430px,100%);background:white;border:1px solid #d9e0e6;border-radius:12px;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.08)}.loginCard input{width:100%;padding:11px;border:1px solid #d9e0e6;border-radius:8px;margin:5px 0 10px}.loginCard h2{margin-top:0}.signedInBar{position:fixed;right:12px;top:12px;z-index:100;background:#fff;color:#17202a;border-radius:8px;padding:7px 9px;font-size:11px;box-shadow:0 1px 4px #0002}.signedInBar button{padding:5px 7px;margin-left:6px}.accountSave{font-size:11px;color:#65717d;margin-top:6px}
-  .formatCard{margin-top:14px;border-top:1px solid var(--line);padding-top:14px}.formatGrid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px}.selectorViewport{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:#222;min-height:280px;touch-action:none}.selectorViewport img{display:block;width:100%;height:auto;user-select:none;pointer-events:none;transform-origin:0 0}.selectorViewport canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}.materialTable button{padding:6px 8px;font-size:11px}.materialTable td,.materialTable th{padding:6px}.savedDef{background:#dff3e5!important;color:#155c2b!important}.targetActive{outline:3px solid #c58b13}.formatList{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.formatList button{padding:6px 8px;font-size:11px}.selectorHelp{font-size:11px;color:var(--muted);line-height:1.4}.formatActions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.formatActions input,.formatActions select{padding:8px;border:1px solid var(--line);border-radius:7px}.layoutLine{display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;margin-bottom:10px}.layoutLine input,.layoutLine select{padding:8px;border:1px solid var(--line);border-radius:7px;width:100%}@media(max-width:900px){.formatGrid{grid-template-columns:1fr}.layoutLine{grid-template-columns:1fr 1fr}.selectorViewport{min-height:220px}}
+  .formatCard{margin-top:14px;border-top:1px solid var(--line);padding-top:14px}
+#formatPanel{position:fixed;inset:2vh 2vw;z-index:8000;background:#f7f8fa;border:1px solid #aeb9c4;border-radius:14px;box-shadow:0 18px 70px rgba(0,0,0,.35);padding:14px;overflow:hidden}
+.formatWorkspaceHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:2px 2px 10px;border-bottom:1px solid var(--line);margin-bottom:10px}.formatWorkspaceHeader h2{margin:0;font-size:20px}.formatWorkspaceHeader .selectorHelp{max-width:760px}
+.formatWorkspaceBody{height:calc(96vh - 76px);overflow:hidden}
+.layoutLine{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto auto;gap:8px;margin-bottom:10px;position:sticky;top:0;z-index:5;background:#f7f8fa;padding-bottom:8px}.layoutLine input,.layoutLine select{padding:9px;border:1px solid var(--line);border-radius:7px;width:100%}
+.formatGrid{display:grid;grid-template-columns:minmax(0,1fr) 430px;gap:14px;height:calc(100% - 52px);min-height:0}
+.formatPreviewColumn{display:flex;flex-direction:column;min-width:0;min-height:0}
+.formatControlsColumn{overflow:auto;min-height:0;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px}
+.selectorViewport{position:relative;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#222;flex:1;min-height:0;touch-action:none;overscroll-behavior:contain}
+.selectorViewport img{display:block;width:100%;height:auto;user-select:none;pointer-events:none;transform-origin:0 0}
+.selectorViewport canvas{position:absolute;left:0;top:0;width:100%;height:100%;touch-action:none}
+.formatActions{display:flex;gap:8px;flex-wrap:wrap;padding:10px 0 0;position:sticky;bottom:0;background:#f7f8fa}.formatActions button{min-height:40px}
+.materialTable button{padding:7px 8px;font-size:11px;white-space:nowrap}.materialTable td,.materialTable th{padding:6px}.materialTable th{top:0}
+.savedDef{background:#dff3e5!important;color:#155c2b!important}.targetActive{outline:3px solid #c58b13}.formatList{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.formatList button{padding:6px 8px;font-size:11px}.selectorHelp{font-size:11px;color:var(--muted);line-height:1.4}
+body.formatOpen{overflow:hidden}
+@media(max-width:1050px){#formatPanel{inset:0;border-radius:0;padding:10px}.formatWorkspaceBody{height:calc(100dvh - 68px)}.formatGrid{grid-template-columns:minmax(0,1fr) 360px}}
+@media(max-width:780px){#formatPanel{inset:0}.formatWorkspaceHeader{align-items:flex-start}.formatWorkspaceHeader h2{font-size:17px}.formatGrid{grid-template-columns:1fr;grid-template-rows:minmax(52vh,1fr) auto;overflow:auto;height:calc(100% - 70px)}.formatPreviewColumn{min-height:52vh}.formatControlsColumn{overflow:visible}.layoutLine{grid-template-columns:1fr 1fr}.selectorViewport{min-height:48vh}.formatActions{position:static}.formatWorkspaceBody{overflow:auto}}
 </style>
 </head>
 <body>
@@ -62,8 +78,13 @@
       <div class="row" style="margin-top:10px"><button id="rotateBtn" class="secondary" disabled>Rotate 90°</button><button id="extractBtn" disabled>Extract current ticket/page</button></div>
       <progress id="ocrProgress" value="0" max="100" style="display:none"></progress>
       <div class="formatCard">
-        <div class="row" style="justify-content:space-between"><div><strong>Ticket format</strong><div class="selectorHelp">Use one reference ticket to define reusable areas. Define each material row first, then its Name / Batched Qty / Moisture / Water columns. The saved format is applied to later photos and PDF pages.</div></div><button id="toggleFormat" class="secondary">Define ticket format</button></div>
-        <div id="formatPanel" style="display:none;margin-top:12px">
+        <div class="row" style="justify-content:space-between"><div><strong>Ticket format</strong><div class="selectorHelp">Use one reference ticket to define reusable areas. Define each material row first, then its Name / Batched Qty / Moisture / Water columns. The saved format is applied to later photos and PDF pages.</div></div><button id="toggleFormat" class="secondary">Open large ticket-format selector</button></div>
+        <div id="formatPanel" style="display:none">
+          <div class="formatWorkspaceHeader">
+            <div><h2>Ticket Format Selector</h2><div class="selectorHelp">Define areas precisely on a large reference ticket. Material workflow: define the row first, then Name / Batched Qty / Moisture / Water.</div></div>
+            <button id="closeFormat" class="secondary">Close / Return to Scanner</button>
+          </div>
+          <div class="formatWorkspaceBody">
           <div class="layoutLine">
             <select id="layoutSelect"><option value="">New layout…</option></select>
             <input id="layoutName" placeholder="Layout name">
@@ -71,7 +92,7 @@
             <button id="deleteLayout" class="danger">Delete</button>
           </div>
           <div class="formatGrid">
-            <div>
+            <div class="formatPreviewColumn">
               <div class="selectorViewport" id="selectorViewport">
                 <img id="selectorImage" alt="Reference ticket">
                 <canvas id="selectorCanvas"></canvas>
@@ -84,7 +105,7 @@
               </div>
               <div id="selectorStatus" class="status">Load a ticket or PDF page, choose an item, then drag a box over its location.</div>
             </div>
-            <div>
+            <div class="formatControlsColumn">
               <div class="step">Materials</div>
               <div class="tableWrap" style="max-height:340px">
                 <table class="materialTable"><thead><tr><th>Material</th><th>Row</th><th>Name</th><th>Batched Qty</th><th>Moisture</th><th>Water</th></tr></thead><tbody id="materialDefs"></tbody></table>
@@ -101,6 +122,7 @@
               <div id="otherDefinedList" class="formatList"></div>
               <details style="margin-top:12px"><summary>Advanced options</summary><div class="selectorHelp" style="margin-top:8px">Material columns use the saved material row height and the horizontal column area you define. Drag the box around the printed value/heading area. Two-finger pinch or the zoom buttons can enlarge the reference ticket.</div></details>
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -368,11 +390,19 @@ function setSelectorImage(src){
 }
 function resizeSelectorCanvas(){
   const im=$('selectorImage'),cv=$('selectorCanvas');if(!im||!cv)return;
-  const rect=im.getBoundingClientRect();cv.width=Math.max(1,Math.round(rect.width));cv.height=Math.max(1,Math.round(rect.height));cv.style.width=rect.width+'px';cv.style.height=rect.height+'px';
+  const w=Math.max(1,Math.round(im.offsetWidth)),h=Math.max(1,Math.round(im.offsetHeight));
+  cv.width=w;cv.height=h;cv.style.width=w+'px';cv.style.height=h+'px';
 }
 function applySelectorZoom(){
-  const im=$('selectorImage'),cv=$('selectorCanvas');if(!im||!cv)return;
-  im.style.width=(selectorScale*100)+'%';cv.style.width=(selectorScale*100)+'%';cv.style.height='auto';setTimeout(()=>{resizeSelectorCanvas();drawSelector()},30);
+  const im=$('selectorImage');if(!im)return;
+  const viewport=$('selectorViewport');
+  const centerX=viewport?viewport.scrollLeft+viewport.clientWidth/2:0,centerY=viewport?viewport.scrollTop+viewport.clientHeight/2:0;
+  const oldW=Math.max(1,im.offsetWidth),oldH=Math.max(1,im.offsetHeight);
+  im.style.width=(selectorScale*100)+'%';
+  setTimeout(()=>{
+    resizeSelectorCanvas();drawSelector();
+    if(viewport&&oldW&&oldH){const newW=im.offsetWidth,newH=im.offsetHeight;viewport.scrollLeft=Math.max(0,centerX*(newW/oldW)-viewport.clientWidth/2);viewport.scrollTop=Math.max(0,centerY*(newH/oldH)-viewport.clientHeight/2)}
+  },30);
 }
 function normRect(a,b,cv){
   const x1=Math.max(0,Math.min(a.x,b.x)),x2=Math.min(cv.width,Math.max(a.x,b.x)),y1=Math.max(0,Math.min(a.y,b.y)),y2=Math.min(cv.height,Math.max(a.y,b.y));
@@ -791,14 +821,21 @@ async function handleTicketFile(file){
 $('photoFile').addEventListener('change',e=>handleTicketFile(e.target.files[0]));
 $('cameraFile').addEventListener('change',e=>handleTicketFile(e.target.files[0]));
 $('photoDrop').addEventListener('dragover',e=>{e.preventDefault();$('photoDrop').classList.add('drag')});$('photoDrop').addEventListener('dragleave',()=>$('photoDrop').classList.remove('drag'));$('photoDrop').addEventListener('drop',e=>{e.preventDefault();$('photoDrop').classList.remove('drag');const f=e.dataTransfer.files[0];if(!f||!(f.type.startsWith('image/')||f.type==='application/pdf'||/\.pdf$/i.test(f.name||'')))return;handleTicketFile(f);});
-$('toggleFormat').onclick=()=>{const p=$('formatPanel'),open=p.style.display==='none';p.style.display=open?'block':'none';$('toggleFormat').textContent=open?'Hide ticket format':'Define ticket format';if(open){if(photoDataUrl)setSelectorImage(photoDataUrl);renderDefinitionState();installSelectorEvents();}};
+function openFormatWorkspace(){
+  const p=$('formatPanel');p.style.display='block';document.body.classList.add('formatOpen');$('toggleFormat').textContent='Ticket format open';
+  if(photoDataUrl)setSelectorImage(photoDataUrl);renderDefinitionState();installSelectorEvents();setTimeout(()=>{resizeSelectorCanvas();drawSelector()},80);
+}
+function closeFormatWorkspace(){const p=$('formatPanel');p.style.display='none';document.body.classList.remove('formatOpen');$('toggleFormat').textContent='Define ticket format';}
+$('toggleFormat').onclick=openFormatWorkspace;
+$('closeFormat').onclick=closeFormatWorkspace;
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('formatPanel').style.display!=='none')closeFormatWorkspace()});
 $('layoutSelect').onchange=e=>selectLayoutById(e.target.value);
 $('saveLayout').onclick=()=>saveAreaLayout().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
 $('deleteLayout').onclick=()=>deleteAreaLayout().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
 $('defineOther').onclick=()=>{defineTarget={kind:'other',key:$('otherItem').value};pendingRect=null;markActiveTarget($('defineOther'));$('selectorStatus').textContent='Drag a box around the selected item on the reference ticket.';$('saveDefinedItem').disabled=true;drawSelector()};
 $('saveDefinedItem').onclick=savePendingDefinition;
-$('zoomIn').onclick=()=>{selectorScale=Math.min(4,selectorScale+.25);applySelectorZoom()};
-$('zoomOut').onclick=()=>{selectorScale=Math.max(1,selectorScale-.25);applySelectorZoom()};
+$('zoomIn').onclick=()=>{selectorScale=Math.min(6,selectorScale+.25);applySelectorZoom()};
+$('zoomOut').onclick=()=>{selectorScale=Math.max(.75,selectorScale-.25);applySelectorZoom()};
 $('resetZoom').onclick=()=>{selectorScale=1;applySelectorZoom()};
 window.addEventListener('resize',()=>{if($('formatPanel')?.style.display!=='none')resizeSelectorCanvas()});
 $('rotateBtn').onclick=()=>{rotation=(rotation+90)%360;$('preview').style.transform=`rotate(${rotation}deg)`;$('preview').style.margin=rotation%180?'50px 0':'0';};
