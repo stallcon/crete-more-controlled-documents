@@ -1,54 +1,410 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#171b1e"><title>Crete-More Ticket Scanner</title>
-<style>
-*{box-sizing:border-box}body{margin:0;background:#e9e7e2;color:#172026;font:15px/1.45 Arial,Helvetica,sans-serif}header{background:#171b1e;color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}.brand{font-weight:950;letter-spacing:.05em}.sub{font-size:10px;opacity:.75;text-transform:uppercase}.wrap{max-width:850px;margin:auto;padding:14px}.card{background:#fff;border:1px solid #d3d5d5;border-radius:13px;padding:15px;margin-bottom:10px}.login{max-width:430px;margin:7vh auto}.field{display:grid;gap:5px;margin:10px 0}.field input{padding:12px;border:1px solid #aeb5b9;border-radius:9px;font-size:16px}.btn{border:0;border-radius:9px;padding:11px 14px;font-weight:850;cursor:pointer;background:#171b1e;color:#fff}.btn.secondary{background:#626b70}.btn:disabled{opacity:.45;cursor:not-allowed}.capture{display:block;padding:18px;border:2px dashed #9aa1a5;border-radius:13px;text-align:center;font-weight:900;cursor:pointer}.capture input{display:none}#preview{width:100%;max-height:380px;object-fit:contain;border-radius:10px;margin-top:10px;background:#ddd}.state{padding:10px;border-radius:10px;background:#eef8f0;border:1px solid #badfc3;margin:10px 0;font-size:12px}.state.warn{background:#fff7d9;border-color:#e3c762}.state.bad{background:#fff0f0;border-color:#e8b2b2}.muted{font-size:12px;color:#65727a}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.kv{border:1px solid #e0e3e4;border-radius:9px;padding:9px}.k{font-size:10px;text-transform:uppercase;color:#68747a;font-weight:900}.v{font-size:18px;font-weight:900;margin-top:3px}.badge{display:inline-block;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900;background:#eee}.good{background:#dff3e5;color:#155c2b}.warn{background:#fff2cb;color:#7c6200}.badb{background:#ffe3e3;color:#922}@media(max-width:560px){.grid{grid-template-columns:1fr}}
-</style></head><body>
-<header><div><div class="brand">CRETE-MORE</div><div class="sub">Durable Ticket Extractor</div></div><button id="out" class="btn secondary" hidden>Sign Out</button></header>
-<main class="wrap">
-<section id="auth" class="card login"><h2>Sign in</h2><div class="muted">Use your Crete-More/Supabase account.</div><label class="field">Email<input id="email" type="email" autocomplete="username"></label><label class="field">Password<input id="password" type="password" autocomplete="current-password"></label><button id="signin" class="btn">Sign In</button><div id="authmsg" class="muted" style="margin-top:8px"></div></section>
-<section id="app" hidden>
-<div class="card"><h2 style="margin-top:0">Scan Ticket</h2><div class="muted">The ticket is uploaded and assigned a durable job before OCR begins. Once upload is complete, leaving the screen will not lose the ticket or extraction state.</div>
-<label class="capture" style="margin-top:10px">📷 Photograph / Select Ticket<input id="camera" type="file" accept="image/*,application/pdf" capture="environment"></label>
-<img id="preview" hidden alt="Ticket preview">
-<div id="state" class="state">No ticket selected.</div>
-<div style="display:flex;gap:8px;flex-wrap:wrap"><button id="extract" class="btn" disabled>Upload & Extract</button><button id="resume" class="btn secondary">Resume Saved Job</button><button id="new" class="btn secondary">New Ticket</button></div>
-<div id="ocr" class="muted" style="margin-top:8px"></div></div>
-<div id="result" class="card" hidden><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><h2 style="margin:0">Extraction Result</h2><span id="resultStatus" class="badge warn">Review</span></div><div id="fields" class="grid" style="margin-top:10px"></div><div id="validation" class="muted" style="margin-top:10px"></div></div>
-</section></main>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crete-More Ticket Extractor</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <style>
+    :root{--bg:#f4f6f8;--card:#fff;--ink:#17202a;--muted:#65717d;--line:#d9e0e6;--accent:#202b38;--good:#1e7b4d;--warn:#a55c00;--bad:#b42318;--soft:#eef2f6}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,Segoe UI,Arial,sans-serif}
+    header{background:var(--accent);color:white;padding:24px 28px} header h1{margin:0;font-size:26px} header p{margin:8px 0 0;color:#d8e0e8;max-width:920px}
+    main{max-width:1320px;margin:22px auto;padding:0 18px 50px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+    .card h2{font-size:18px;margin:0 0 12px}.step{font-weight:700;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}.drop{border:2px dashed #aeb9c4;border-radius:10px;padding:18px;text-align:center;background:#fafbfc;cursor:pointer}.drop.drag{background:#eef5ff;border-color:#6486b4}
+    input[type=file]{display:none} button,.btn{border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;background:var(--accent);color:white}.secondary{background:#e8edf2;color:#1f2933}.danger{background:#fce8e6;color:var(--bad)}button:disabled{opacity:.45;cursor:not-allowed}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.status{font-size:13px;color:var(--muted);margin-top:10px}.ok{color:var(--good)}.warning{color:var(--warn)}.error{color:var(--bad)}
+    #previewWrap{display:none;margin-top:12px}.preview{max-width:100%;max-height:430px;border-radius:8px;border:1px solid var(--line);background:#111}
+    progress{width:100%;height:14px;margin-top:10px}.ocrText{width:100%;min-height:180px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap}
+    .fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}.field input,.field textarea,.field select{width:100%;border:1px solid var(--line);border-radius:7px;padding:9px;background:white;color:var(--ink)}.field textarea{min-height:62px;resize:vertical}.field .hint{font-size:10px;color:#7b8793;margin-top:3px;min-height:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .wide{grid-column:span 2}.full{grid-column:1/-1}.badge{display:inline-block;padding:2px 6px;border-radius:999px;background:var(--soft);font-size:10px;margin-left:5px}.detected{background:#e8f5ee;color:var(--good)}
+    table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}th{background:#f7f9fb;position:sticky;top:0}.tableWrap{overflow:auto;max-height:360px;border:1px solid var(--line);border-radius:8px}
+    details{margin-top:12px}summary{cursor:pointer;font-weight:700;color:#4a5662}.advanced{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px}.advanced label{font-size:12px;color:var(--muted)}.advanced input,.advanced select{width:100%;margin-top:4px;padding:8px;border:1px solid var(--line);border-radius:7px}
+    .notice{padding:10px 12px;border-radius:8px;background:#fff8e6;border:1px solid #ead59d;font-size:12px;color:#654b0c}.footerNote{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.45}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}.advanced{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.fields,.advanced{grid-template-columns:1fr}.wide{grid-column:auto}}
+  .loginGate{position:fixed;inset:0;z-index:9999;background:#f4f6f8;display:flex;align-items:flex-start;justify-content:center;padding:8vh 16px}.loginCard{width:min(430px,100%);background:white;border:1px solid #d9e0e6;border-radius:12px;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.08)}.loginCard input{width:100%;padding:11px;border:1px solid #d9e0e6;border-radius:8px;margin:5px 0 10px}.loginCard h2{margin-top:0}.signedInBar{position:fixed;right:12px;top:12px;z-index:100;background:#fff;color:#17202a;border-radius:8px;padding:7px 9px;font-size:11px;box-shadow:0 1px 4px #0002}.signedInBar button{padding:5px 7px;margin-left:6px}.accountSave{font-size:11px;color:#65717d;margin-top:6px}
+  </style>
+</head>
+<body>
+<div id="loginGate" class="loginGate">
+  <div class="loginCard">
+    <h2>Crete-More Sign In</h2>
+    <p style="color:#65717d;font-size:13px">Sign in, then use the extractor the same way as before.</p>
+    <label>Email<input id="loginEmail" type="email" autocomplete="username"></label>
+    <label>Password<input id="loginPassword" type="password" autocomplete="current-password"></label>
+    <button id="loginBtn">Sign In</button>
+    <div id="loginMsg" class="status"></div>
+  </div>
+</div>
+<div id="signedInBar" class="signedInBar" hidden><span id="signedInAs"></span><button id="logoutBtn" class="secondary">Sign Out</button></div>
+<header>
+  <h1>Crete-More Ticket Extractor</h1>
+  <p>Load the Ticket Analyzer workbook, photograph or upload a concrete batch ticket, review and correct the detected values, queue tickets, then export the updated workbook.</p>
+</header>
+<main>
+  <div class="grid">
+    <section class="card">
+      <div class="step">Step 1</div><h2>Load Ticket Analyzer workbook</h2>
+      <label class="drop" for="workbookFile"><strong>Select Ticket Analyzer.xlsx</strong><br><span style="color:var(--muted);font-size:12px">The workbook stays in your browser.</span></label>
+      <input id="workbookFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+      <div id="workbookStatus" class="status">No workbook loaded.</div>
+      <div class="row" style="margin-top:10px"><label style="font-size:12px;color:var(--muted)">Worksheet</label><select id="sheetSelect" disabled style="padding:8px;border:1px solid var(--line);border-radius:7px;min-width:180px"></select></div>
+    </section>
+    <section class="card">
+      <div class="step">Step 2</div><h2>Photograph or upload a ticket</h2>
+      <label id="photoDrop" class="drop" for="photoFile"><strong>Choose photo / use camera</strong><br><span style="color:var(--muted);font-size:12px">JPG, PNG, HEIC if your browser supports it</span></label>
+      <input id="photoFile" type="file" accept="image/*" capture="environment" />
+      <div id="photoStatus" class="status">No photo loaded.</div><div id="accountSave" class="accountSave"></div>
+      <div id="previewWrap"><img id="preview" class="preview" alt="Ticket preview"></div>
+      <div class="row" style="margin-top:10px"><button id="rotateBtn" class="secondary" disabled>Rotate 90°</button><button id="extractBtn" disabled>Extract ticket data</button></div>
+      <progress id="ocrProgress" value="0" max="100" style="display:none"></progress>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:18px">
+    <div class="step">Step 3</div><h2>Review extracted data</h2>
+    <div class="notice">OCR is a first pass. Review the numbers before adding a ticket. Moisture fields are shown as percent here and are written to Excel as decimal fractions (0.50% → 0.005).</div>
+    <div id="fields" class="fields" style="margin-top:14px"></div>
+    <div class="row" style="margin-top:16px"><button id="queueBtn" disabled>Add reviewed ticket to queue</button><button id="clearBtn" class="secondary">Clear form</button></div>
+    <details><summary>OCR text and extraction troubleshooting</summary><textarea id="ocrText" class="ocrText" placeholder="OCR text will appear here. You can correct it and click Re-parse text."></textarea><div class="row" style="margin-top:8px"><button id="reparseBtn" class="secondary">Re-parse text</button></div></details>
+  </section>
+
+  <section class="card" style="margin-top:18px">
+    <div class="step">Step 4</div><h2>Ticket queue and Excel export</h2>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>Placement</th><th>Ticket</th><th>Load</th><th>Rock Req / Batched</th><th>Sand Req / Batched</th><th>Cement Req / Batched</th><th>Water Req / Batched</th><th>Moisture R/S</th><th>W/C</th><th></th></tr></thead><tbody id="queueBody"><tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr></tbody></table></div>
+    <details><summary>Workbook settings</summary><div class="advanced"><label>Data start row<input id="dataStartRow" type="number" min="1" value="4"></label><label>Formula/template row<input id="templateRow" type="number" min="1" value="4"></label><label>Copy formulas to new rows<select id="copyFormulas"><option value="yes" selected>Yes</option><option value="no">No</option></select></label><label>Target row mode<select id="rowMode"><option value="auto" selected>First empty Ticket # row</option><option value="append">After last Ticket # row</option></select></label></div></details>
+    <div class="row" style="margin-top:14px"><button id="exportBtn" disabled>Download updated Excel</button><button id="clearQueueBtn" class="danger" disabled>Clear queue</button></div>
+    <div id="exportStatus" class="status"></div>
+    <div class="footerNote">Mapped input columns: A–J, L, N, P, R–T, V–Z. Calculated columns K, M, O, Q, U and AA–AE are not overwritten. When formula copying is enabled, the app uses the formula/template row as the pattern for a newly populated row.</div>
+  </section>
+</main>
 <script>
-const U='https://ewyoaxwdrommnpqwsduh.supabase.co',K='sb_publishable_ahIDV7SsJHGwc7HeKQa_8Q_fmrIEuf4',BUCKET='cm-ticket-uploads';
-const $=id=>document.getElementById(id);let token=localStorage.getItem('cm_sb_token'),user=null,currentFile=null,currentUrl=null,running=false,wake=null;
-const DB='crete-more-ticket-live',STORE='jobs',KEY='active';
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function dbopen(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(STORE))r.result.createObjectStore(STORE)};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
-async function loadJob(){const db=await dbopen();const x=await new Promise((res,rej)=>{const q=db.transaction(STORE,'readonly').objectStore(STORE).get(KEY);q.onsuccess=()=>res(q.result||null);q.onerror=()=>rej(q.error)});db.close();return x}
-async function saveJob(p){const old=await loadJob().catch(()=>null)||{},db=await dbopen(),j={...old,...p,updatedAt:new Date().toISOString()};await new Promise((res,rej)=>{const q=db.transaction(STORE,'readwrite').objectStore(STORE).put(j,KEY);q.onsuccess=()=>res();q.onerror=()=>rej(q.error)});db.close();return j}
-async function clearJob(){const db=await dbopen();await new Promise((res,rej)=>{const q=db.transaction(STORE,'readwrite').objectStore(STORE).delete(KEY);q.onsuccess=()=>res();q.onerror=()=>rej(q.error)});db.close();localStorage.removeItem('cm_ticket_upload_id')}
-function setState(t,k='good'){$('state').className='state '+(k==='warn'?'warn':k==='bad'?'bad':'');$('state').textContent=t}
-async function auth(path,body){const r=await fetch(U+'/auth/v1/'+path,{method:'POST',headers:{apikey:K,'content-type':'application/json'},body:JSON.stringify(body)}),d=await r.json();if(!r.ok)throw Error(d.error_description||d.msg||d.message||'Authentication failed');return d}
-async function api(path,opt={}){const r=await fetch(U+path,{...opt,headers:{apikey:K,authorization:'Bearer '+token,...(opt.headers||{})}});const text=await r.text(),d=text?JSON.parse(text):null;if(!r.ok)throw Error(d?.message||d?.error||'Request failed');return d}
-async function enter(){if(!token)return;const r=await fetch(U+'/auth/v1/user',{headers:{apikey:K,authorization:'Bearer '+token}});if(!r.ok)throw Error('Session expired');user=await r.json();$('auth').hidden=true;$('app').hidden=false;$('out').hidden=false;await restore()}
-$('signin').onclick=async()=>{try{const d=await auth('token?grant_type=password',{email:$('email').value,password:$('password').value});token=d.access_token;localStorage.setItem('cm_sb_token',token);await enter()}catch(e){$('authmsg').textContent=e.message}};
-$('out').onclick=()=>{localStorage.removeItem('cm_sb_token');location.reload()};
-async function sha256(file){const b=await file.arrayBuffer(),h=await crypto.subtle.digest('SHA-256',b);return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,'0')).join('')}
-function safeName(n){return String(n||'ticket.jpg').replace(/[^A-Za-z0-9._-]/g,'_')}
-async function uploadTicket(file){setState('Uploading original ticket…');const form=new FormData();form.append('file',file,file.name||'ticket');form.append('project_name','');const r=await fetch(U+'/functions/v1/ticket-upload',{method:'POST',headers:{apikey:K,authorization:'Bearer '+token},body:form});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error((d.error||'Ticket upload failed')+(d.message?' — '+d.message:''));const t=d.ticket;if(!t?.id)throw Error('Ticket record was not created');localStorage.setItem('cm_ticket_upload_id',t.id);await saveJob({file,fileName:file.name,mimeType:file.type,ticketUploadId:t.id,storagePath:t.storage_path,status:'uploaded',requested:true});setState('Upload complete. Ticket safely stored. OCR is starting…');return t.id}
-function base64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(file)})}
-async function acquire(){try{if('wakeLock'in navigator&&document.visibilityState==='visible')wake=await navigator.wakeLock.request('screen')}catch{}}
-async function release(){try{await wake?.release()}catch{}wake=null}
-async function handoff(id,rawText,confidence,provider){return api('/functions/v1/ticket-ocr-handoff',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ticket_upload_id:id,rawText,confidence,provider})})}
-async function serverResult(id){const rows=await api('/rest/v1/cm_ticket_uploads?id=eq.'+encodeURIComponent(id)+'&select=extraction_status,extracted_data,validation_status,validation_confidence,review_required_count,validation_summary');return rows?.[0]||null}
-function render(ex,row={}){if(!ex?.fields?.length)return false;$('result').hidden=false;const map=Object.fromEntries(ex.fields.map(x=>[x.key,x]));const keys=[['ticketNumber','Ticket'],['mixId','Mix'],['loadSizeYd3','Volume yd³'],['cementBatchedLb','Cement lb'],['scmBatchedLb','SCM lb'],['rockBatchedLb','Coarse Agg lb'],['rockMoisturePct','Coarse Moisture %'],['sandBatchedLb','Fine Agg lb'],['sandMoisturePct','Fine Moisture %'],['waterBatchedGal','Water gal']];$('fields').innerHTML=keys.filter(([k])=>map[k]?.value!==null&&map[k]?.value!==undefined&&map[k]?.value!=='').map(([k,l])=>'<div class="kv"><div class="k">'+esc(l)+'</div><div class="v">'+esc(map[k].value)+'</div></div>').join('');const st=row.validation_status||'check';$('resultStatus').textContent=st.replaceAll('_',' ');$('resultStatus').className='badge '+(st==='accepted'?'good':st==='invalid'||st==='review_required'?'badb':'warn');$('validation').textContent='Validation confidence: '+(row.validation_confidence!=null?(Number(row.validation_confidence)*100).toFixed(1)+'%':'pending')+(row.review_required_count?' · '+row.review_required_count+' field(s) need review':'');return true}
-async function pollServer(id){for(let i=0;i<5;i++){const row=await serverResult(id).catch(()=>null);if(row&&render(row.extracted_data,row)){await saveJob({status:'review_ready',extraction:row.extracted_data});setState('Extraction complete and saved. You can leave this screen.');return true}await new Promise(r=>setTimeout(r,800))}return false}
-async function run(){if(running)return;let j=await loadJob().catch(()=>null);if(!currentFile&&j?.file)currentFile=j.file;if(!currentFile)return;running=true;await acquire();let uploaded=false;try{let id=j?.ticketUploadId;if(!id){id=await uploadTicket(currentFile);uploaded=true}else uploaded=true;j=await loadJob();if(j?.extraction){render(j.extraction);return}if(j?.rawText){setState('Recognized text restored. Finishing server validation…');const d=await handoff(id,j.rawText,j.confidence||.8,j.provider||'current_ocr');if(d?.extraction){render(d.extraction);await saveJob({status:'review_ready',extraction:d.extraction});return}await pollServer(id);return}
-setState('Running current OCR…');let out;if(window.CreteMoreNativeOCR?.recognize){out=await window.CreteMoreNativeOCR.recognize(currentFile);out.provider='native_bridge'}else{const b=await base64(currentFile);const r=await fetch('http://127.0.0.1:8790/v1/ocr/image',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({base64:b,mimeType:currentFile.type,fileName:currentFile.name})});const x=await r.json();if(!x.ok)throw Error(x.message||x.status||'Current OCR service unavailable');out={rawText:x.ocr.rawText,confidence:x.ocr.confidence,provider:x.ocr.provider}}
-await saveJob({status:'recognized',rawText:out.rawText,confidence:out.confidence,provider:out.provider});$('ocr').textContent='OCR: '+out.provider+' · '+Math.round((out.confidence||0)*100)+'%';const d=await handoff(id,out.rawText,out.confidence,out.provider);if(d?.extraction){render(d.extraction);await saveJob({status:'review_ready',extraction:d.extraction});setState('Extraction complete and saved.');return}if(await pollServer(id))return;setState('OCR is saved. Server validation is still processing; reopen this page later to continue.','warn')
-}catch(e){await saveJob({status:'resume_pending',requested:true,lastError:e.message}).catch(()=>{});setState((uploaded?'Ticket upload succeeded. OCR paused: ':'Upload/extraction issue: ')+e.message+(uploaded?' Return later and OCR will resume.':' Please retry the upload.'),'warn')}finally{running=false;await release()}}
-$('camera').onchange=async()=>{currentFile=$('camera').files?.[0];if(!currentFile)return;if(currentUrl)URL.revokeObjectURL(currentUrl);currentUrl=URL.createObjectURL(currentFile);$('preview').src=currentUrl;$('preview').hidden=false;$('extract').disabled=false;await saveJob({file:currentFile,fileName:currentFile.name,mimeType:currentFile.type,status:'captured',requested:false,ticketUploadId:null,rawText:null,extraction:null});setState('Ticket saved locally. Press Upload & Extract.')};
-$('extract').onclick=async()=>{await saveJob({requested:true});run()};$('resume').onclick=restore;$('new').onclick=async()=>{await clearJob();currentFile=null;$('preview').hidden=true;$('result').hidden=true;$('extract').disabled=true;setState('Ready for a new ticket.')};
-async function restore(){const j=await loadJob().catch(()=>null);if(!j)return;if(j.ticketUploadId)localStorage.setItem('cm_ticket_upload_id',j.ticketUploadId);if(j.file){currentFile=j.file;if(currentUrl)URL.revokeObjectURL(currentUrl);currentUrl=URL.createObjectURL(j.file);$('preview').src=currentUrl;$('preview').hidden=false;$('extract').disabled=false}if(j.extraction){render(j.extraction);setState('Saved extraction restored.');return}if(j.ticketUploadId){const row=await serverResult(j.ticketUploadId).catch(()=>null);if(row&&render(row.extracted_data,row)){await saveJob({status:'review_ready',extraction:row.extracted_data});setState('Background result restored from Supabase.');return}}if(j.requested&&document.visibilityState==='visible'){setState('Resuming saved ticket job…');setTimeout(run,100)}else setState('Saved ticket found. Press Resume Saved Job.')}
-document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'){const j=await loadJob().catch(()=>null);if(j?.requested&&!j?.extraction)restore()}else await release()});
-window.addEventListener('pageshow',restore);
-enter().catch(()=>{localStorage.removeItem('cm_sb_token')});
-</script></body></html>
+'use strict';
+
+const SB_URL='https://ewyoaxwdrommnpqwsduh.supabase.co';
+const SB_KEY='sb_publishable_ahIDV7SsJHGwc7HeKQa_8Q_fmrIEuf4';
+let sbToken=localStorage.getItem('cm_sb_token')||'', sbUser=null;
+async function sbAuth(path,body){
+  const r=await fetch(SB_URL+'/auth/v1/'+path,{method:'POST',headers:{apikey:SB_KEY,'content-type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>({})); if(!r.ok) throw Error(d.error_description||d.msg||d.message||'Sign in failed'); return d;
+}
+async function validateLogin(){
+  if(!sbToken)return false;
+  const r=await fetch(SB_URL+'/auth/v1/user',{headers:{apikey:SB_KEY,authorization:'Bearer '+sbToken}});
+  if(!r.ok)return false; sbUser=await r.json(); return true;
+}
+function showExtractor(){
+  document.getElementById('loginGate').style.display='none';
+  document.getElementById('signedInBar').hidden=false;
+  document.getElementById('signedInAs').textContent=sbUser?.email||'Signed in';
+}
+async function startLogin(){
+  const msg=document.getElementById('loginMsg'); msg.textContent='Signing in…';
+  try{
+    const d=await sbAuth('token?grant_type=password',{email:document.getElementById('loginEmail').value.trim(),password:document.getElementById('loginPassword').value});
+    sbToken=d.access_token; localStorage.setItem('cm_sb_token',sbToken);
+    if(await validateLogin()){msg.textContent='';showExtractor()} else throw Error('Could not validate session');
+  }catch(e){msg.innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>'}
+}
+async function saveOriginalToAccount(file){
+  if(!sbToken||!sbUser||!file)return null;
+  const box=document.getElementById('accountSave'); box.textContent='Saving original ticket to your account…';
+  try{
+    const form=new FormData();form.append('file',file,file.name||'ticket');
+    const r=await fetch(SB_URL+'/functions/v1/ticket-upload',{method:'POST',headers:{apikey:SB_KEY,authorization:'Bearer '+sbToken},body:form});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error((d.error||'save_failed')+(d.message?' — '+d.message:''));
+    box.innerHTML='<span class="ok">Original ticket saved to your account.</span>';
+    localStorage.setItem('cm_ticket_upload_id',d.ticket.id);
+    return d.ticket;
+  }catch(e){box.innerHTML='<span class="warning">Account save did not complete. Local OCR/review still works: '+escapeHtml(e.message||String(e))+'</span>';return null}
+}
+function persistQueue(){try{localStorage.setItem('cm_ticket_extractor_queue',JSON.stringify(queue))}catch{}}
+function restoreQueue(){try{const q=JSON.parse(localStorage.getItem('cm_ticket_extractor_queue')||'[]');if(Array.isArray(q))queue=q}catch{}}
+document.addEventListener('DOMContentLoaded',async()=>{
+  document.getElementById('loginBtn').onclick=startLogin;
+  document.getElementById('loginPassword').addEventListener('keydown',e=>{if(e.key==='Enter')startLogin()});
+  document.getElementById('logoutBtn').onclick=()=>{localStorage.removeItem('cm_sb_token');location.reload()};
+  if(await validateLogin())showExtractor();
+});
+
+const FIELD_DEFS = [
+  {key:'placement', label:'Placement #', col:'A', type:'text', aliases:['placement','pour','placement #']},
+  {key:'ticket', label:'Ticket #', col:'B', type:'text', aliases:['ticket','ticket #','batch ticket','load ticket']},
+  {key:'issues', label:'Issues?', col:'C', type:'text', aliases:['issues','issue','notes']},
+  {key:'load_size', label:'Load Size (yds)', col:'D', type:'number', aliases:['load size','quantity','qty','yards','yds','cubic yards','cu yd']},
+  {key:'rock_required', label:'Rock Required (lbs)', col:'E', type:'number'},
+  {key:'sand_required', label:'Sand Required (lbs)', col:'F', type:'number'},
+  {key:'cement_required', label:'Cement Required (lbs)', col:'G', type:'number'},
+  {key:'flyash_required', label:'Fly Ash Required (lbs)', col:'H', type:'number'},
+  {key:'water_required', label:'Water Required (gal)', col:'I', type:'number'},
+  {key:'rock_batched', label:'Rock Batched (lbs)', col:'J', type:'number'},
+  {key:'sand_batched', label:'Sand Batched (lbs)', col:'L', type:'number'},
+  {key:'cement_batched', label:'Cement Batched (lbs)', col:'N', type:'number'},
+  {key:'flyash_batched', label:'Fly Ash Batched (lbs)', col:'P', type:'number'},
+  {key:'water_batched', label:'Water Batched (gal)', col:'R', type:'number'},
+  {key:'rock_moisture', label:'Rock Moisture (%)', col:'S', type:'number'},
+  {key:'sand_moisture', label:'Sand Moisture (%)', col:'T', type:'number'},
+  {key:'wr', label:'WR (oz)', col:'V', type:'number'},
+  {key:'air', label:'Air (oz)', col:'W', type:'number'},
+  {key:'admix2', label:'Admix 2 (oz)', col:'X', type:'number'},
+  {key:'tested_psi', label:'Tested PSI', col:'Y', type:'number'},
+  {key:'wc_ratio_report', label:'W/C Ratio Report', col:'Z', type:'number'}
+];
+const FORMULA_COLS = ['K','M','O','Q','U','AA','AB','AC','AD','AE'];
+const MATERIALS = {
+  rock: {aliases:['rock','stone','coarse aggregate','coarse agg','agg 1','aggregate 1','gravel']},
+  sand: {aliases:['sand','fine aggregate','fine agg','agg 2','aggregate 2']},
+  cement: {aliases:['cement','cem ','cem\t','type il','type i/ii','portland']},
+  flyash: {aliases:['fly ash','flyash','class c','class f','ash','pozzolan']},
+  water: {aliases:['water','h2o']}
+};
+
+let workbookBuffer = null, workbookName = '', workbookMeta = null;
+let photoDataUrl = null, rotation = 0, queue = [], lastDetected = {};
+let ocrWorker = null;
+
+const $ = id => document.getElementById(id);
+
+function renderFields(){
+  const box = $('fields'); box.innerHTML='';
+  FIELD_DEFS.forEach(d=>{
+    const wrap=document.createElement('div'); wrap.className='field'+(d.key==='issues'?' wide':'');
+    const label=document.createElement('label'); label.innerHTML=`${d.label} <span class="badge">Excel ${d.col}</span>`;
+    const input=d.key==='issues'?document.createElement('textarea'):document.createElement('input');
+    if(d.type==='number' && input.tagName==='INPUT'){input.type='number'; input.step='any';}
+    input.id='f_'+d.key; input.autocomplete='off';
+    const hint=document.createElement('div');hint.id='h_'+d.key;hint.className='hint';
+    wrap.append(label,input,hint); box.appendChild(wrap);
+  });
+  const savedPlacement=localStorage.getItem('ticketExtractorPlacement');
+  if(savedPlacement) $('f_placement').value=savedPlacement;
+}
+
+function setField(key,value,source=''){
+  const el=$('f_'+key); if(!el || value===undefined || value===null || value==='') return;
+  el.value=String(value).replace(/,/g,'');
+  const h=$('h_'+key); if(h){h.textContent=source?`Detected from: ${source}`:'Detected'; h.classList.add('ok');}
+}
+function clearDetectedHints(){FIELD_DEFS.forEach(d=>{const h=$('h_'+d.key);if(h){h.textContent='';h.className='hint';}})}
+function clearForm(keepPlacement=true){
+  const p=keepPlacement?$('f_placement').value:'';
+  FIELD_DEFS.forEach(d=>{$('f_'+d.key).value='';}); clearDetectedHints();
+  if(keepPlacement) $('f_placement').value=p;
+  $('queueBtn').disabled=false;
+}
+
+function normalizeText(s){return (s||'').replace(/[|]/g,'I').replace(/[“”]/g,'"').replace(/[’]/g,"'").replace(/\r/g,'').replace(/[ \t]+/g,' ').trim();}
+function numTokens(line){
+  const m=(line||'').match(/[-+]?\d[\d,]*(?:\.\d+)?\s*%?/g)||[];
+  return m.map(raw=>({raw, value:parseFloat(raw.replace(/,/g,'').replace('%','')), pct:raw.includes('%')})).filter(x=>Number.isFinite(x.value));
+}
+function hasAny(line,arr){const l=line.toLowerCase();return arr.some(a=>l.includes(a));}
+function cleanLine(line){return line.replace(/\s+/g,' ').trim();}
+function plausible(nums,min,max){return nums.filter(n=>n.value>=min&&n.value<=max);}
+function chooseLast(nums,min=-Infinity,max=Infinity){const a=plausible(nums,min,max);return a.length?a[a.length-1]:null;}
+function materialLine(lines,aliases){return lines.filter(l=>hasAny(l,aliases) && !/moist|absorp|specific gravity|sg\b/i.test(l));}
+
+function parseMaterialPair(lines, name){
+  const cfg=MATERIALS[name]; const candidates=materialLine(lines,cfg.aliases);
+  const out={};
+  for(const line of candidates){
+    let nums=numTokens(line);
+    const range=name==='water'?[0,2000]:[50,100000];
+    nums=plausible(nums,range[0],range[1]);
+    if(!nums.length) continue;
+    const low=line.toLowerCase();
+    const target=/required|target|design|theoretical|ordered|req\b/.test(low);
+    const actual=/actual|batched|batch\b|loaded|delivered/.test(low);
+    if(nums.length>=2){
+      // Use the last two numeric values to avoid material codes such as #57.
+      out.required=out.required??nums[nums.length-2].value;
+      out.batched=out.batched??nums[nums.length-1].value;
+      out.source=line; break;
+    } else if(target&&!actual){out.required=out.required??nums[0].value;out.source=line;}
+    else if(actual){out.batched=out.batched??nums[0].value;out.source=line;}
+    else if(out.required==null){out.required=nums[0].value;out.source=line;}
+  }
+  return out;
+}
+function parseMoisture(lines,name){
+  const aliases=MATERIALS[name].aliases;
+  for(const line of lines){
+    if(hasAny(line,aliases) && /moist|moisture|%mc|mc\b/i.test(line)){
+      let nums=numTokens(line).filter(n=>n.value>=0 && n.value<=30);
+      if(nums.length){const n=nums[nums.length-1];return {value:n.pct?n.value:(n.value<=0.2?n.value*100:n.value),source:line};}
+    }
+  }
+  return null;
+}
+function parseLabeledSingle(lines,aliases,min,max,extraRegex=null){
+  for(const line of lines){
+    if(hasAny(line,aliases) && (!extraRegex || extraRegex.test(line))){
+      const n=chooseLast(numTokens(line),min,max); if(n) return {value:n.value,source:line};
+    }
+  } return null;
+}
+function parseTicketText(text){
+  const lines=normalizeText(text).split('\n').map(cleanLine).filter(Boolean); const r={};
+  for(const line of lines){
+    if(/ticket|batch ticket|load ticket/i.test(line)){
+      const nums=numTokens(line).filter(n=>Number.isInteger(n.value)&&n.value>=1000&&n.value<1e12);
+      if(nums.length){r.ticket={value:String(Math.trunc(nums[nums.length-1].value)),source:line};break;}
+    }
+  }
+  for(const line of lines){
+    if(/placement|pour\s*#?/i.test(line)){const n=chooseLast(numTokens(line),0,1000000);if(n){r.placement={value:n.value,source:line};break;}}
+  }
+  for(const line of lines){
+    if(/load size|quantity|\bqty\b|cubic yards|cu\.?\s*yd|\byds\b|yards/i.test(line)){
+      const candidates=numTokens(line).filter(n=>n.value>0&&n.value<=100);if(candidates.length){r.load_size={value:candidates[candidates.length-1].value,source:line};break;}
+    }
+  }
+  const rock=parseMaterialPair(lines,'rock'), sand=parseMaterialPair(lines,'sand'), cem=parseMaterialPair(lines,'cement'), ash=parseMaterialPair(lines,'flyash'), water=parseMaterialPair(lines,'water');
+  if(rock.required!=null) r.rock_required={value:rock.required,source:rock.source}; if(rock.batched!=null) r.rock_batched={value:rock.batched,source:rock.source};
+  if(sand.required!=null) r.sand_required={value:sand.required,source:sand.source}; if(sand.batched!=null) r.sand_batched={value:sand.batched,source:sand.source};
+  if(cem.required!=null) r.cement_required={value:cem.required,source:cem.source}; if(cem.batched!=null) r.cement_batched={value:cem.batched,source:cem.source};
+  if(ash.required!=null) r.flyash_required={value:ash.required,source:ash.source}; if(ash.batched!=null) r.flyash_batched={value:ash.batched,source:ash.source};
+  if(water.required!=null) r.water_required={value:water.required,source:water.source}; if(water.batched!=null) r.water_batched={value:water.batched,source:water.source};
+  const rm=parseMoisture(lines,'rock'); if(rm) r.rock_moisture=rm; const sm=parseMoisture(lines,'sand'); if(sm) r.sand_moisture=sm;
+  const wr=parseLabeledSingle(lines,['water reducer','wr ','wr:','pce','glenium','adva','polycarbox'],0,10000); if(wr) r.wr=wr;
+  const air=parseLabeledSingle(lines,['air entr','aea','air admixture',' air '],0,10000); if(air) r.air=air;
+  const adm2=parseLabeledSingle(lines,['admix 2','admixture 2','admix2','accelerator','retarder'],0,10000); if(adm2) r.admix2=adm2;
+  for(const line of lines){if(/psi|compressive|strength/i.test(line)){const n=chooseLast(numTokens(line),500,30000);if(n){r.tested_psi={value:n.value,source:line};break;}}}
+  for(const line of lines){if(/w\s*\/\s*c|wc ratio|water.?cement|wcm|w\/cm/i.test(line)){const candidates=numTokens(line).filter(n=>n.value>=0.15&&n.value<=0.9);if(candidates.length){r.wc_ratio_report={value:candidates[candidates.length-1].value,source:line};break;}}}
+  return r;
+}
+function applyParsed(parsed){
+  clearDetectedHints(); lastDetected=parsed;
+  Object.entries(parsed).forEach(([k,o])=>setField(k,o.value,o.source));
+  $('queueBtn').disabled=false;
+}
+
+async function preprocessImage(dataUrl){
+  const img=new Image(); img.src=dataUrl; await img.decode();
+  const rot=rotation%360; const swap=rot===90||rot===270; const maxDim=2400;
+  let w=img.naturalWidth,h=img.naturalHeight; const scale=Math.min(1,maxDim/Math.max(w,h)); w=Math.round(w*scale);h=Math.round(h*scale);
+  const c=document.createElement('canvas'); c.width=swap?h:w; c.height=swap?w:h; const ctx=c.getContext('2d');
+  ctx.save();
+  if(rot===90){ctx.translate(c.width,0);ctx.rotate(Math.PI/2);} else if(rot===180){ctx.translate(c.width,c.height);ctx.rotate(Math.PI);} else if(rot===270){ctx.translate(0,c.height);ctx.rotate(-Math.PI/2);}
+  ctx.drawImage(img,0,0,w,h);ctx.restore();
+  // Mild grayscale/contrast improves printed ticket OCR without destroying fine decimal points.
+  const id=ctx.getImageData(0,0,c.width,c.height),d=id.data;
+  for(let i=0;i<d.length;i+=4){let g=.299*d[i]+.587*d[i+1]+.114*d[i+2];g=((g-128)*1.25)+128;g=Math.max(0,Math.min(255,g));d[i]=d[i+1]=d[i+2]=g;}
+  ctx.putImageData(id,0,0); return c.toDataURL('image/png',0.95);
+}
+async function runOCR(){
+  if(!photoDataUrl) return;
+  $('extractBtn').disabled=true;$('ocrProgress').style.display='block';$('ocrProgress').value=0;$('photoStatus').textContent='Preparing image…';
+  try{
+    const processed=await preprocessImage(photoDataUrl);
+    if(!ocrWorker){
+      ocrWorker=await Tesseract.createWorker('eng',1,{logger:m=>{if(typeof m.progress==='number'){$('ocrProgress').value=Math.round(m.progress*100);$('photoStatus').textContent=`OCR: ${m.status} ${Math.round(m.progress*100)}%`;}}});
+      try{await ocrWorker.setParameters({preserve_interword_spaces:'1'});}catch(_e){}
+    }
+    const result=await ocrWorker.recognize(processed); const text=result.data.text||''; $('ocrText').value=text; applyParsed(parseTicketText(text));
+    $('photoStatus').innerHTML=`<span class="ok">OCR complete. Review detected values below.</span>`;
+  }catch(e){console.error(e);$('photoStatus').innerHTML=`<span class="error">OCR failed: ${escapeHtml(e.message||String(e))}</span>`;}
+  finally{$('extractBtn').disabled=false;$('ocrProgress').style.display='none';}
+}
+
+function formTicket(){
+  const obj={}; FIELD_DEFS.forEach(d=>{let v=$('f_'+d.key).value.trim(); if(v==='') obj[d.key]=''; else if(d.type==='number'){const n=Number(v.replace(/,/g,''));obj[d.key]=Number.isFinite(n)?n:v;}else obj[d.key]=v;}); return obj;
+}
+function validateTicket(t){const errs=[];if(!t.ticket)errs.push('Ticket # is blank');if(t.load_size!==''&&!(Number(t.load_size)>0))errs.push('Load Size must be greater than zero');return errs;}
+function addQueue(){
+  const t=formTicket(),errs=validateTicket(t); if(errs.length&&!confirm(errs.join('\n')+'\n\nAdd anyway?')) return;
+  queue.push(t); persistQueue(); if(t.placement!=='')localStorage.setItem('ticketExtractorPlacement',String(t.placement)); renderQueue(); clearForm(true); $('ocrText').value='';
+}
+function renderQueue(){
+  const b=$('queueBody'); b.innerHTML=''; if(!queue.length){b.innerHTML='<tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr>';}
+  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td>${esc(t.placement)}</td><td><strong>${esc(t.ticket)}</strong></td><td>${esc(t.load_size)}</td><td>${esc(t.rock_required)} / ${esc(t.rock_batched)}</td><td>${esc(t.sand_required)} / ${esc(t.sand_batched)}</td><td>${esc(t.cement_required)} / ${esc(t.cement_batched)}</td><td>${esc(t.water_required)} / ${esc(t.water_batched)}</td><td>${esc(t.rock_moisture)}% / ${esc(t.sand_moisture)}%</td><td>${esc(t.wc_ratio_report)}</td><td><button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
+  b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=()=>{queue.splice(Number(x.dataset.rm),1);persistQueue();renderQueue();});
+  $('clearQueueBtn').disabled=!queue.length;$('exportBtn').disabled=!(queue.length&&workbookBuffer);
+}
+
+function columnNumber(col){let n=0;for(const ch of col)n=n*26+(ch.charCodeAt(0)-64);return n;}
+function cellCol(ref){return (ref.match(/[A-Z]+/i)||[''])[0].toUpperCase();}
+function normalizeZipTarget(target){target=target.replace(/\\/g,'/');if(target.startsWith('/'))return target.slice(1);if(target.startsWith('xl/'))return target;return 'xl/'+target.replace(/^\.\//,'');}
+function parseXML(s){return new DOMParser().parseFromString(s,'application/xml');}
+function xmlString(doc){return new XMLSerializer().serializeToString(doc);}
+function textOfInline(cell){const ts=cell.getElementsByTagName('t');let s='';for(const t of ts)s+=t.textContent||'';return s;}
+function cellValue(cell,shared){
+  if(!cell)return '';
+  const t=cell.getAttribute('t'); if(t==='inlineStr')return textOfInline(cell);
+  const vs=cell.getElementsByTagName('v'); if(!vs.length)return '';
+  const raw=vs[0].textContent||''; if(t==='s'){const idx=Number(raw);return shared[idx]??'';} return raw;
+}
+function sharedStringsFrom(xml){if(!xml)return[];const doc=parseXML(xml),sis=doc.getElementsByTagName('si'),out=[];for(const si of sis){let s='';for(const t of si.getElementsByTagName('t'))s+=t.textContent||'';out.push(s);}return out;}
+function getRow(doc,n){for(const r of doc.getElementsByTagName('row'))if(Number(r.getAttribute('r'))===n)return r;return null;}
+function getCell(row,col){if(!row)return null;for(const c of row.getElementsByTagName('c'))if(cellCol(c.getAttribute('r')||'')===col)return c;return null;}
+function getOrCreateRow(doc,n){
+  let r=getRow(doc,n);if(r)return r;const data=doc.getElementsByTagName('sheetData')[0];r=doc.createElementNS(data.namespaceURI,'row');r.setAttribute('r',String(n));
+  let before=null;for(const x of data.getElementsByTagName('row')){if(Number(x.getAttribute('r'))>n){before=x;break;}}before?data.insertBefore(r,before):data.appendChild(r);return r;
+}
+function getOrCreateCell(doc,row,col,rowNum,templateCell=null){
+  let c=getCell(row,col);if(c)return c;c=doc.createElementNS(row.namespaceURI,'c');c.setAttribute('r',col+rowNum);if(templateCell?.hasAttribute('s'))c.setAttribute('s',templateCell.getAttribute('s'));
+  let before=null;for(const x of row.getElementsByTagName('c'))if(columnNumber(cellCol(x.getAttribute('r')||''))>columnNumber(col)){before=x;break;}before?row.insertBefore(c,before):row.appendChild(c);return c;
+}
+function clearCellChildren(c){while(c.firstChild)c.removeChild(c.firstChild);c.removeAttribute('t');}
+function setCellValue(doc,c,value,type){
+  clearCellChildren(c); if(value===undefined||value===null||value==='')return;
+  if(type==='number' && Number.isFinite(Number(value))){const v=doc.createElementNS(c.namespaceURI,'v');v.textContent=String(Number(value));c.appendChild(v);}
+  else{c.setAttribute('t','inlineStr');const is=doc.createElementNS(c.namespaceURI,'is'),t=doc.createElementNS(c.namespaceURI,'t');t.setAttribute('xml:space','preserve');t.textContent=String(value);is.appendChild(t);c.appendChild(is);}
+}
+function translateFormula(formula,delta){return formula.replace(/(\$?)([A-Z]{1,3})(\$?)(\d+)/g,(m,absC,col,absR,row)=>absR?m:`${absC}${col}${absR}${Number(row)+delta}`);}
+function ensureFormula(doc,targetRow,templateRow,col){
+  const trow=getRow(doc,templateRow),tcell=getCell(trow,col); if(!tcell)return;
+  const f=tcell.getElementsByTagName('f')[0];if(!f)return;
+  const row=getOrCreateRow(doc,targetRow),existing=getCell(row,col); if(existing&&existing.getElementsByTagName('f').length)return;
+  const c=getOrCreateCell(doc,row,col,targetRow,tcell); clearCellChildren(c); if(tcell.hasAttribute('s'))c.setAttribute('s',tcell.getAttribute('s'));
+  const nf=doc.createElementNS(c.namespaceURI,'f');nf.textContent=translateFormula(f.textContent||'',targetRow-templateRow);c.appendChild(nf);
+}
+function findTargetRow(doc,shared,start,mode,reserved){
+  const occupied=[];for(const row of doc.getElementsByTagName('row')){const n=Number(row.getAttribute('r'));if(n<start)continue;const v=String(cellValue(getCell(row,'B'),shared)).trim();if(v!=='')occupied.push(n);}
+  const used=new Set([...occupied,...reserved]); if(mode==='append'){let m=start-1;for(const n of used)if(n>m)m=n;return m+1;}
+  let r=start;while(used.has(r))r++;return r;
+}
+function updateDimension(doc,row){const dims=doc.getElementsByTagName('dimension');if(!dims.length)return;const d=dims[0],ref=d.getAttribute('ref')||'A1';const parts=ref.split(':');const end=parts.length>1?parts[1]:parts[0];const m=end.match(/([A-Z]+)(\d+)/i);if(m&&Number(m[2])<row)d.setAttribute('ref',(parts[0]||'A1')+':'+m[1].toUpperCase()+row);}
+function forceRecalc(workbookDoc){let cp=workbookDoc.getElementsByTagName('calcPr')[0];if(!cp){const root=workbookDoc.documentElement;cp=workbookDoc.createElementNS(root.namespaceURI,'calcPr');root.appendChild(cp);}cp.setAttribute('calcMode','auto');cp.setAttribute('fullCalcOnLoad','1');cp.setAttribute('forceFullCalc','1');}
+async function inspectWorkbook(buffer){
+  const zip=await JSZip.loadAsync(buffer),wbx=await zip.file('xl/workbook.xml').async('string'),relsx=await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  const wbdoc=parseXML(wbx),reldoc=parseXML(relsx),rels={};for(const r of reldoc.getElementsByTagName('Relationship'))rels[r.getAttribute('Id')]=normalizeZipTarget(r.getAttribute('Target')||'');
+  const sheets=[];for(const s of wbdoc.getElementsByTagName('sheet')){const rid=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');sheets.push({name:s.getAttribute('name'),rid,path:rels[rid]});}
+  return {sheets};
+}
+async function exportWorkbook(){
+  if(!workbookBuffer||!queue.length)return;$('exportBtn').disabled=true;$('exportStatus').textContent='Building updated workbook…';
+  try{
+    const zip=await JSZip.loadAsync(workbookBuffer.slice(0)); const wbXml=await zip.file('xl/workbook.xml').async('string');const relXml=await zip.file('xl/_rels/workbook.xml.rels').async('string');
+    const wbDoc=parseXML(wbXml),relDoc=parseXML(relXml),relMap={};for(const r of relDoc.getElementsByTagName('Relationship'))relMap[r.getAttribute('Id')]=normalizeZipTarget(r.getAttribute('Target')||'');
+    const selectedName=$('sheetSelect').value;let sheetPath=null;for(const s of wbDoc.getElementsByTagName('sheet')){if(s.getAttribute('name')===selectedName){const rid=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');sheetPath=relMap[rid];break;}}
+    if(!sheetPath||!zip.file(sheetPath))throw new Error('Could not locate selected worksheet XML.');
+    const shDoc=parseXML(await zip.file(sheetPath).async('string')); const shared=zip.file('xl/sharedStrings.xml')?sharedStringsFrom(await zip.file('xl/sharedStrings.xml').async('string')):[];
+    const start=Math.max(1,Number($('dataStartRow').value)||4), templ=Math.max(1,Number($('templateRow').value)||4), mode=$('rowMode').value;const reserved=[];
+    for(const ticket of queue){
+      const rowNum=findTargetRow(shDoc,shared,start,mode,reserved);reserved.push(rowNum);const row=getOrCreateRow(shDoc,rowNum);const trow=getRow(shDoc,templ);
+      for(const d of FIELD_DEFS){let val=ticket[d.key];if(val===undefined||val===null||val==='')continue;if(d.key==='rock_moisture'||d.key==='sand_moisture')val=Number(val)/100;
+        const tc=getCell(trow,d.col),c=getOrCreateCell(shDoc,row,d.col,rowNum,tc);setCellValue(shDoc,c,val,d.type);if(tc?.hasAttribute('s')&&!c.hasAttribute('s'))c.setAttribute('s',tc.getAttribute('s'));
+      }
+      if($('copyFormulas').value==='yes')for(const col of FORMULA_COLS)ensureFormula(shDoc,rowNum,templ,col);updateDimension(shDoc,rowNum);
+    }
+    forceRecalc(wbDoc);zip.file(sheetPath,xmlString(shDoc));zip.file('xl/workbook.xml',xmlString(wbDoc));
+    const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});const url=URL.createObjectURL(blob),a=document.createElement('a');
+    const base=(workbookName||'Ticket Analyzer.xlsx').replace(/\.xlsx$/i,'');a.href=url;a.download=base+' - Updated.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+    $('exportStatus').innerHTML=`<span class="ok">Export complete: ${queue.length} ticket(s) written.</span>`;
+  }catch(e){console.error(e);$('exportStatus').innerHTML=`<span class="error">Export failed: ${escapeHtml(e.message||String(e))}</span>`;}
+  finally{$('exportBtn').disabled=!(queue.length&&workbookBuffer);}
+}
+
+function esc(v){return escapeHtml(v===undefined||v===null?'':String(v));}function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+
+$('workbookFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{workbookBuffer=await f.arrayBuffer();workbookName=f.name;workbookMeta=await inspectWorkbook(workbookBuffer.slice(0));$('sheetSelect').innerHTML='';for(const s of workbookMeta.sheets){const o=document.createElement('option');o.value=s.name;o.textContent=s.name;$('sheetSelect').appendChild(o);}$('sheetSelect').disabled=false;$('workbookStatus').innerHTML=`<span class="ok">Loaded ${escapeHtml(f.name)} — ${workbookMeta.sheets.length} sheet(s).</span>`;renderQueue();}catch(err){console.error(err);workbookBuffer=null;$('workbookStatus').innerHTML=`<span class="error">Could not read workbook: ${escapeHtml(err.message||String(err))}</span>`;}});
+$('photoFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;saveOriginalToAccount(f);const rd=new FileReader();rd.onload=()=>{photoDataUrl=rd.result;rotation=0;$('preview').src=photoDataUrl;$('previewWrap').style.display='block';$('photoStatus').textContent=f.name;$('rotateBtn').disabled=false;$('extractBtn').disabled=false;};rd.readAsDataURL(f);});
+$('photoDrop').addEventListener('dragover',e=>{e.preventDefault();$('photoDrop').classList.add('drag')});$('photoDrop').addEventListener('dragleave',()=>$('photoDrop').classList.remove('drag'));$('photoDrop').addEventListener('drop',e=>{e.preventDefault();$('photoDrop').classList.remove('drag');const f=e.dataTransfer.files[0];if(!f||!f.type.startsWith('image/'))return;const dt=new DataTransfer();dt.items.add(f);$('photoFile').files=dt.files;$('photoFile').dispatchEvent(new Event('change'));});
+$('rotateBtn').onclick=()=>{rotation=(rotation+90)%360;$('preview').style.transform=`rotate(${rotation}deg)`;$('preview').style.margin=rotation%180?'50px 0':'0';};
+$('extractBtn').onclick=runOCR;$('reparseBtn').onclick=()=>applyParsed(parseTicketText($('ocrText').value));$('queueBtn').onclick=addQueue;$('clearBtn').onclick=()=>clearForm(true);$('clearQueueBtn').onclick=()=>{if(confirm('Clear all queued tickets?')){queue=[];persistQueue();renderQueue();}};$('exportBtn').onclick=exportWorkbook;
+restoreQueue();renderFields();clearForm(true);$('queueBtn').disabled=false;renderQueue();
+</script>
+</body>
+</html>
