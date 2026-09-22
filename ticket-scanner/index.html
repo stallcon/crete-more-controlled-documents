@@ -27,7 +27,7 @@
 #formatPanel{position:fixed;inset:2vh 2vw;z-index:8000;background:#f7f8fa;border:1px solid #aeb9c4;border-radius:14px;box-shadow:0 18px 70px rgba(0,0,0,.35);padding:14px;overflow:hidden}
 .formatWorkspaceHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:2px 2px 10px;border-bottom:1px solid var(--line);margin-bottom:10px}.formatWorkspaceHeader h2{margin:0;font-size:20px}.formatWorkspaceHeader .selectorHelp{max-width:760px}
 .formatWorkspaceBody{height:calc(96vh - 76px);overflow:hidden}
-.layoutLine{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto auto;gap:8px;margin-bottom:10px;position:sticky;top:0;z-index:5;background:#f7f8fa;padding-bottom:8px}.layoutLine input,.layoutLine select{padding:9px;border:1px solid var(--line);border-radius:7px;width:100%}
+.layoutLine{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto auto auto;gap:8px;margin-bottom:10px;position:sticky;top:0;z-index:5;background:#f7f8fa;padding-bottom:8px}.layoutLine input,.layoutLine select{padding:9px;border:1px solid var(--line);border-radius:7px;width:100%}
 .formatGrid{display:grid;grid-template-columns:minmax(0,1fr) 430px;gap:14px;height:calc(100% - 52px);min-height:0}
 .formatPreviewColumn{display:flex;flex-direction:column;min-width:0;min-height:0}
 .formatControlsColumn{overflow:auto;min-height:0;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px}
@@ -89,6 +89,7 @@ body.formatOpen{overflow:hidden}
             <select id="layoutSelect"><option value="">New layout…</option></select>
             <input id="layoutName" placeholder="Layout name">
             <button id="saveLayout">Save layout</button>
+            <button id="clearLayoutDefs" class="secondary">Clear definitions</button>
             <button id="deleteLayout" class="danger">Delete</button>
           </div>
           <div class="formatGrid">
@@ -143,7 +144,7 @@ body.formatOpen{overflow:hidden}
     <div class="notice" style="margin-top:12px">Each export uses a clean copy of your saved <b>Ticket Importer.xlsx</b> template. The <b>Tickets</b> sheet keeps row 1 headers, removes all prior ticket rows, writes only this queue starting at row 2, downloads the workbook, then clears the queue.</div>
     <div class="row" style="margin-top:14px"><button id="exportBtn" disabled>Export Ticket Importer.xlsx</button><button id="clearQueueBtn" class="danger" disabled>Clear queue</button></div>
     <div id="exportStatus" class="status"></div>
-    <div class="footerNote">Export target: the workbook's <b>Tickets</b> sheet (A:BJ). Moisture values are exported as decimal fractions (for example, 0.50% is written as 0.00500). All other workbook sheets and formulas remain in place.</div>
+    <div class="footerNote">Export target: the workbook's <b>Tickets</b> sheet (A:BJ). Moisture values are exported as decimal fractions (for example, 0.50% is written as 0.00500). The export is made self-contained: external workbook references are converted to internal sheet references where possible, external-link packages are removed, and Excel is forced to recalculate using only data and formulas inside the downloaded workbook.</div>
   </section>
 </main>
 <script>
@@ -361,6 +362,24 @@ async function saveAreaLayout(){
   await loadAreaLayouts();$('layoutSelect').value=activeLayout.id||'';
   $('selectorStatus').innerHTML='<span class="ok">Layout saved. Applying it to all queued tickets…</span>';
   await reextractQueuedTicketsWithActiveLayout();
+}
+async function clearAreaLayoutDefinitions(){
+  const has=(activeLayout.regions?.length||0)>0||Object.keys(activeLayout.material_rows||{}).length>0;
+  if(!has){$('selectorStatus').textContent='This layout has no saved definitions to clear.';return}
+  if(!confirm('Clear every defined area in this layout? The layout name will remain, but all row/column/field boxes will be removed.'))return;
+  activeLayout.regions=[];activeLayout.material_rows={};defineTarget=null;pendingRect=null;markActiveTarget(null);
+  if(activeLayout.id){
+    const rows=await sbRest('/rest/v1/cm_ticket_area_layouts?id=eq.'+encodeURIComponent(activeLayout.id),{
+      method:'PATCH',
+      headers:{'content-type':'application/json',prefer:'return=representation'},
+      body:JSON.stringify({regions:[],material_rows:{},updated_at:new Date().toISOString()})
+    });
+    const row=rows?.[0];if(row){activeLayout.regions=[];activeLayout.material_rows={}}
+    const local=areaLayouts.find(x=>x.id===activeLayout.id);if(local){local.regions=[];local.material_rows={}}
+  }
+  renderDefinitionState();drawSelector();
+  $('selectorStatus').innerHTML='<span class="ok">Layout definitions cleared. The saved layout name remains. Define new areas and save when ready.</span>';
+  if($('layoutApplyStatus'))$('layoutApplyStatus').innerHTML='<span class="warning">Layout definitions were cleared. Existing queued values are unchanged until you define and save a new layout.</span>';
 }
 async function deleteAreaLayout(){
   if(!activeLayout.id)return;
@@ -825,6 +844,60 @@ function locateSheetPath(wbDoc,relDoc,name){
     const rid=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');return relMap[rid]||null;
   }return null;
 }
+function regexEscape(s){return String(s).replace(/[.*+?^$(){}|[\]\\]/g,'\\function locateSheetPath(wbDoc,relDoc,name){
+  const relMap={};for(const r of relDoc.getElementsByTagName('Relationship'))relMap[r.getAttribute('Id')]=normalizeZipTarget(r.getAttribute('Target')||'');
+  for(const s of wbDoc.getElementsByTagName('sheet'))if((s.getAttribute('name')||'').trim()===name){
+    const rid=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');return relMap[rid]||null;
+  }return null;
+}')}
+function workbookSheetNames(wbDoc){return Array.from(wbDoc.getElementsByTagName('sheet')).map(s=>(s.getAttribute('name')||'').trim()).filter(Boolean)}
+function internalizeKnownSheetRefs(xml,sheetNames){
+  let out=String(xml);
+  for(const name of sheetNames){
+    const re=regexEscape(name),quoted=name.replace(/'/g,"''");
+    out=out.replace(new RegExp('\\[\\d+\\]'+re+'!','g'),name+'!');
+    out=out.replace(new RegExp("'\\[\\d+\\]"+re+"'!","g"),"'"+quoted+"'!");
+  }
+  return out;
+}
+function forceWorkbookRecalc(wbDoc){
+  let cp=wbDoc.getElementsByTagName('calcPr')[0];
+  if(!cp){cp=wbDoc.createElementNS(wbDoc.documentElement.namespaceURI,'calcPr');wbDoc.documentElement.appendChild(cp)}
+  cp.setAttribute('calcMode','auto');cp.setAttribute('fullCalcOnLoad','1');cp.setAttribute('forceFullCalc','1');
+}
+async function makeWorkbookSelfContained(zip,wbDoc,relDoc){
+  const sheetNames=workbookSheetNames(wbDoc);
+  const formulaParts=Object.keys(zip.files).filter(n=>/^xl\/(worksheets|tables)\/.*\.xml$/i.test(n));
+  for(const name of formulaParts){
+    const file=zip.file(name);if(!file)continue;
+    const xml=await file.async('string');
+    zip.file(name,internalizeKnownSheetRefs(xml,sheetNames));
+  }
+  for(const node of Array.from(relDoc.getElementsByTagName('Relationship'))){
+    const type=node.getAttribute('Type')||'',target=node.getAttribute('Target')||'';
+    if(type.includes('/externalLink')||target.includes('externalLinks')||type.includes('/calcChain'))node.parentNode?.removeChild(node);
+  }
+  for(const node of Array.from(wbDoc.getElementsByTagName('externalReferences')))node.parentNode?.removeChild(node);
+  forceWorkbookRecalc(wbDoc);
+  for(const name of Object.keys(zip.files))if(name.startsWith('xl/externalLinks/')||name==='xl/calcChain.xml')zip.remove(name);
+  const ct=zip.file('[Content_Types].xml');
+  if(ct){
+    const ctDoc=parseXML(await ct.async('string'));
+    for(const node of Array.from(ctDoc.getElementsByTagName('Override'))){
+      const part=node.getAttribute('PartName')||'';
+      if(part.includes('/xl/externalLinks/')||part==='/xl/calcChain.xml')node.parentNode?.removeChild(node);
+    }
+    zip.file('[Content_Types].xml',xmlString(ctDoc));
+  }
+  zip.file('xl/workbook.xml',internalizeKnownSheetRefs(xmlString(wbDoc),sheetNames));
+  zip.file('xl/_rels/workbook.xml.rels',xmlString(relDoc));
+  for(const name of [...formulaParts,'xl/workbook.xml']){
+    const file=zip.file(name);if(!file)continue;
+    const xml=await file.async('string');
+    const externalRefPattern=new RegExp('\\[\\d+\\](?:\\'[^\\']+\\'|[^!<]+)!');
+    if(externalRefPattern.test(xml))throw new Error('Export stopped because an unresolved external workbook formula reference remains in '+name+'.');
+  }
+}
 async function inspectWorkbook(buffer){
   const zip=await JSZip.loadAsync(buffer),wbx=await zip.file('xl/workbook.xml').async('string'),relsx=await zip.file('xl/_rels/workbook.xml.rels').async('string');
   const wbdoc=parseXML(wbx),reldoc=parseXML(relsx),ticketsPath=locateSheetPath(wbdoc,reldoc,'Tickets');
@@ -856,12 +929,14 @@ async function exportWorkbook(){
     });
     const dims=shDoc.getElementsByTagName('dimension');if(dims.length)dims[0].setAttribute('ref','A1:BJ'+Math.max(1,queue.length+1));
     zip.file(sheetPath,xmlString(shDoc));
+    $('exportStatus').textContent='Making workbook self-contained and recalculating internal formulas…';
+    await makeWorkbookSelfContained(zip,wbDoc,relDoc);
     const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
     const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;
     const stamp=new Date().toISOString().slice(0,10);a.download=(workbookName||'Ticket Importer.xlsx').replace(/\.xlsx$/i,'')+' - '+stamp+'.xlsx';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
     const count=queue.length,exported=[...queue];queue=[];persistQueue();renderQueue();clearQueueSources(exported);
-    $('exportStatus').innerHTML='<span class="ok">Export complete: '+count+' ticket(s). The Tickets sheet contains only this export. Queue cleared for the next export.</span>';
+    $('exportStatus').innerHTML='<span class="ok">Export complete: '+count+' ticket(s). The workbook is self-contained: external workbook links were removed, formulas reference only sheets inside this file, and the Tickets sheet contains only this export. Queue cleared for the next export.</span>';
   }catch(e){console.error(e);$('exportStatus').innerHTML='<span class="error">Export failed: '+escapeHtml(e.message||String(e))+'</span>';}
   finally{$('exportBtn').disabled=!(queue.length&&workbookBuffer);}
 }
@@ -895,6 +970,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('formatPanel').st
 $('layoutSelect').onchange=e=>selectLayoutById(e.target.value);
 $('saveLayout').onclick=()=>saveAreaLayout().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
 $('applyLayoutQueue').onclick=()=>reextractQueuedTicketsWithActiveLayout().catch(e=>{$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>';if($('layoutApplyStatus'))$('layoutApplyStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>'});
+$('clearLayoutDefs').onclick=()=>clearAreaLayoutDefinitions().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
 $('deleteLayout').onclick=()=>deleteAreaLayout().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
 $('defineOther').onclick=()=>{defineTarget={kind:'other',key:$('otherItem').value};pendingRect=null;markActiveTarget($('defineOther'));$('selectorStatus').textContent='Drag a box around the selected item on the reference ticket.';$('saveDefinedItem').disabled=true;drawSelector()};
 $('saveDefinedItem').onclick=savePendingDefinition;
