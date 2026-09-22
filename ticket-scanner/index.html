@@ -844,12 +844,7 @@ function locateSheetPath(wbDoc,relDoc,name){
     const rid=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');return relMap[rid]||null;
   }return null;
 }
-function regexEscape(s){return String(s).replace(/[.*+?^$(){}|[\]\\]/g,'\\function locateSheetPath(wbDoc,relDoc,name){
-  const relMap={};for(const r of relDoc.getElementsByTagName('Relationship'))relMap[r.getAttribute('Id')]=normalizeZipTarget(r.getAttribute('Target')||'');
-  for(const s of wbDoc.getElementsByTagName('sheet'))if((s.getAttribute('name')||'').trim()===name){
-    const rid=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');return relMap[rid]||null;
-  }return null;
-}')}
+function regexEscape(s){return String(s).replace(/[.*+?^$(){}|[\]\\]/g,'\\$&')}
 function workbookSheetNames(wbDoc){return Array.from(wbDoc.getElementsByTagName('sheet')).map(s=>(s.getAttribute('name')||'').trim()).filter(Boolean)}
 function internalizeKnownSheetRefs(xml,sheetNames){
   let out=String(xml);
@@ -891,10 +886,10 @@ async function makeWorkbookSelfContained(zip,wbDoc,relDoc){
   }
   zip.file('xl/workbook.xml',internalizeKnownSheetRefs(xmlString(wbDoc),sheetNames));
   zip.file('xl/_rels/workbook.xml.rels',xmlString(relDoc));
+  const externalRefPattern=/\[\d+\](?:'[^']+'|[^!<]+)!/;
   for(const name of [...formulaParts,'xl/workbook.xml']){
     const file=zip.file(name);if(!file)continue;
     const xml=await file.async('string');
-    const externalRefPattern=new RegExp('\\[\\d+\\](?:\\'[^\\']+\\'|[^!<]+)!');
     if(externalRefPattern.test(xml))throw new Error('Export stopped because an unresolved external workbook formula reference remains in '+name+'.');
   }
 }
