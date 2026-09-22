@@ -138,7 +138,7 @@ body.formatOpen{overflow:hidden}
   </section>
 
   <section class="card" style="margin-top:18px">
-    <div class="step">Step 4</div><h2>Ticket queue and Excel export</h2>
+    <div class="step">Step 4</div><h2>Ticket queue and Excel export</h2><div class="selectorHelp" style="margin-bottom:10px">Use <b>Define Layout</b> on any queued ticket to reopen its original image/PDF page in the large format selector.</div>
     <div class="tableWrap"><table><thead><tr><th>#</th><th>Ticket</th><th>Volume</th><th>Coarse</th><th>Fine</th><th>Cement</th><th>SCM #1</th><th>Water</th><th>W/C</th><th>Mix</th><th></th></tr></thead><tbody id="queueBody"><tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr></tbody></table></div>
     <div class="notice" style="margin-top:12px">Each export uses a clean copy of your saved <b>Ticket Importer.xlsx</b> template. The <b>Tickets</b> sheet keeps row 1 headers, removes all prior ticket rows, writes only this queue starting at row 2, downloads the workbook, then clears the queue.</div>
     <div class="row" style="margin-top:14px"><button id="exportBtn" disabled>Export Ticket Importer.xlsx</button><button id="clearQueueBtn" class="danger" disabled>Clear queue</button></div>
@@ -189,6 +189,13 @@ async function saveOriginalToAccount(file){
 }
 function persistQueue(){try{localStorage.setItem('cm_ticket_extractor_queue',JSON.stringify(queue))}catch{}}
 function restoreQueue(){try{const q=JSON.parse(localStorage.getItem('cm_ticket_extractor_queue')||'[]');if(Array.isArray(q))queue=q}catch{}}
+const SOURCE_DB='crete-more-ticket-queue-sources',SOURCE_STORE='sources';
+function openSourceDb(){return new Promise((resolve,reject)=>{const r=indexedDB.open(SOURCE_DB,1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(SOURCE_STORE))r.result.createObjectStore(SOURCE_STORE)};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+async function saveQueueSource(dataUrl,meta={}){if(!dataUrl)return null;const id=crypto.randomUUID(),db=await openSourceDb();await new Promise((resolve,reject)=>{const q=db.transaction(SOURCE_STORE,'readwrite').objectStore(SOURCE_STORE).put({dataUrl,meta,createdAt:new Date().toISOString()},id);q.onsuccess=()=>resolve();q.onerror=()=>reject(q.error)});db.close();return id}
+async function loadQueueSource(id){if(!id)return null;const db=await openSourceDb();const v=await new Promise((resolve,reject)=>{const q=db.transaction(SOURCE_STORE,'readonly').objectStore(SOURCE_STORE).get(id);q.onsuccess=()=>resolve(q.result||null);q.onerror=()=>reject(q.error)});db.close();return v}
+async function deleteQueueSource(id){if(!id)return;const db=await openSourceDb();await new Promise((resolve,reject)=>{const q=db.transaction(SOURCE_STORE,'readwrite').objectStore(SOURCE_STORE).delete(id);q.onsuccess=()=>resolve();q.onerror=()=>reject(q.error)});db.close()}
+async function clearQueueSources(items){for(const t of items||[])await deleteQueueSource(t?._sourceId).catch(()=>{})}
+async function attachSourceToTicket(ticket,dataUrl,meta={}){const id=await saveQueueSource(dataUrl,meta).catch(()=>null);if(id)ticket._sourceId=id;return ticket}
 document.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('loginBtn').onclick=startLogin;
   document.getElementById('loginPassword').addEventListener('keydown',e=>{if(e.key==='Enter')startLogin()});
@@ -293,7 +300,7 @@ let photoDataUrl = null, rotation = 0, queue = [], lastDetected = {};
 let ocrWorker = null, ticketSourceFile = null;
 let pdfJs = null, pdfDoc = null, pdfPageNumber = 1, pdfPageCount = 0, pdfPageResults = new Map();
 let areaLayouts=[],activeLayout={id:null,name:'',regions:[],material_rows:{}},defineTarget=null,pendingRect=null,selectorScale=1;
-let pointerStart=null,pinchStart=null;
+let pointerStart=null,pinchStart=null,formatReferenceDataUrl=null;
 
 const $ = id => document.getElementById(id);
 const MATERIAL_DEF_ROWS=[
@@ -626,7 +633,7 @@ async function renderPdfPageData(pageNumber,updateUi=true){
   await page.render({canvasContext:ctx,viewport}).promise;
   const dataUrl=canvas.toDataURL('image/png',0.96);
   if(updateUi){
-    pdfPageNumber=pageNumber;photoDataUrl=dataUrl;rotation=0;
+    pdfPageNumber=pageNumber;photoDataUrl=dataUrl;formatReferenceDataUrl=dataUrl;rotation=0;
     $('preview').style.transform='';$('preview').style.margin='0';$('preview').src=dataUrl;$('previewWrap').style.display='block';setSelectorImage(dataUrl);
     $('pdfPageLabel').textContent='Page '+pdfPageNumber+' of '+pdfPageCount;
     $('pdfPrev').disabled=pdfPageNumber<=1;$('pdfNext').disabled=pdfPageNumber>=pdfPageCount;
@@ -674,11 +681,22 @@ function ticketFromParsed(parsed){
   FIELD_DEFS.forEach(d=>{const x=parsed[d.key];out[d.key]=x&&x.value!==undefined&&x.value!==null?x.value:'';});
   return out;
 }
-function editQueuedTicket(index){
+async function editQueuedTicket(index){
   const t=queue[index];if(!t)return;
   FIELD_DEFS.forEach(d=>{const el=$('f_'+d.key);if(el)el.value=t[d.key]??'';});
+  const src=await loadQueueSource(t._sourceId).catch(()=>null);
+  if(src?.dataUrl){photoDataUrl=src.dataUrl;formatReferenceDataUrl=src.dataUrl;$('preview').src=src.dataUrl;$('previewWrap').style.display='block';setSelectorImage(src.dataUrl)}
   queue.splice(index,1);persistQueue();renderQueue();
   window.scrollTo({top:$('fields').getBoundingClientRect().top+window.scrollY-20,behavior:'smooth'});
+}
+async function defineLayoutFromQueued(index){
+  const t=queue[index];if(!t)return;
+  const src=await loadQueueSource(t._sourceId).catch(()=>null);
+  if(!src?.dataUrl){alert('The original source for this queued ticket is not available on this device.');return}
+  formatReferenceDataUrl=src.dataUrl;
+  setSelectorImage(src.dataUrl);
+  openFormatWorkspace();
+  $('selectorStatus').innerHTML='<span class="ok">Reference ticket loaded from queue'+(t.ticket?' · Ticket '+escapeHtml(t.ticket):'')+'. Define or revise the layout, then save it.</span>';
 }
 async function extractAllPdfPages(){
   if(!pdfDoc||!pdfPageCount)return;
@@ -692,6 +710,7 @@ async function extractAllPdfPages(){
       const result=await recognizeTicketImage(img);
       pdfPageResults.set(p,result);
       const t=ticketFromParsed(result.parsed);
+      await attachSourceToTicket(t,img,{kind:'pdf_page',page:p,fileName:ticketSourceFile?.name||''});
       queue.push(t);added++;persistQueue();renderQueue();
     }
     await renderPdfPageData(pdfPageNumber,true);
@@ -731,15 +750,17 @@ function formTicket(){
   const obj={}; FIELD_DEFS.forEach(d=>{let v=$('f_'+d.key).value.trim(); if(v==='') obj[d.key]=''; else if(d.type==='number'){const n=Number(v.replace(/,/g,''));obj[d.key]=Number.isFinite(n)?n:v;}else obj[d.key]=v;}); return obj;
 }
 function validateTicket(t){const errs=[];if(!t.ticket)errs.push('Ticket # is blank');if(t.load_size!==''&&!(Number(t.load_size)>0))errs.push('Load Size must be greater than zero');return errs;}
-function addQueue(){
+async function addQueue(){
   const t=formTicket(),errs=validateTicket(t); if(errs.length&&!confirm(errs.join('\n')+'\n\nAdd anyway?')) return;
+  await attachSourceToTicket(t,photoDataUrl,{kind:pdfDoc?'pdf_page':'image',page:pdfDoc?pdfPageNumber:null,fileName:ticketSourceFile?.name||''});
   queue.push(t); persistQueue(); renderQueue(); clearForm(); $('ocrText').value='';
 }
 function renderQueue(){
   const b=$('queueBody'); b.innerHTML=''; if(!queue.length){b.innerHTML='<tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr>';}
-  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><strong>${esc(t.ticket)}</strong></td><td>${esc(t.load_size)}</td><td>${esc(t.coarse_name)} · ${esc(t.rock_batched)} · ${esc(t.rock_moisture)}%</td><td>${esc(t.fine_name)} · ${esc(t.sand_batched)} · ${esc(t.sand_moisture)}%</td><td>${esc(t.cement_name)} · ${esc(t.cement_batched)}</td><td>${esc(t.scm1_name)} · ${esc(t.flyash_batched)}</td><td>${esc(t.water_batched)}</td><td>${esc(t.wc_ratio_report)}</td><td>${esc(t.mix_code)}</td><td><button class="secondary" data-edit="${i}" style="padding:6px 8px">Edit</button> <button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
+  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><strong>${esc(t.ticket)}</strong></td><td>${esc(t.load_size)}</td><td>${esc(t.coarse_name)} · ${esc(t.rock_batched)} · ${esc(t.rock_moisture)}%</td><td>${esc(t.fine_name)} · ${esc(t.sand_batched)} · ${esc(t.sand_moisture)}%</td><td>${esc(t.cement_name)} · ${esc(t.cement_batched)}</td><td>${esc(t.scm1_name)} · ${esc(t.flyash_batched)}</td><td>${esc(t.water_batched)}</td><td>${esc(t.wc_ratio_report)}</td><td>${esc(t.mix_code)}</td><td><button class="secondary" data-layout="${i}" style="padding:6px 8px">Define Layout</button> <button class="secondary" data-edit="${i}" style="padding:6px 8px">Edit</button> <button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
+  b.querySelectorAll('[data-layout]').forEach(x=>x.onclick=()=>defineLayoutFromQueued(Number(x.dataset.layout)));
   b.querySelectorAll('[data-edit]').forEach(x=>x.onclick=()=>editQueuedTicket(Number(x.dataset.edit)));
-  b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=()=>{queue.splice(Number(x.dataset.rm),1);persistQueue();renderQueue();});
+  b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=async()=>{const i=Number(x.dataset.rm),t=queue[i];queue.splice(i,1);persistQueue();renderQueue();await deleteQueueSource(t?._sourceId).catch(()=>{})});
   $('clearQueueBtn').disabled=!queue.length;$('exportBtn').disabled=!(queue.length&&workbookBuffer);
 }
 
@@ -797,7 +818,7 @@ async function exportWorkbook(){
     const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;
     const stamp=new Date().toISOString().slice(0,10);a.download=(workbookName||'Ticket Importer.xlsx').replace(/\.xlsx$/i,'')+' - '+stamp+'.xlsx';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
-    const count=queue.length;queue=[];persistQueue();renderQueue();
+    const count=queue.length,exported=[...queue];queue=[];persistQueue();renderQueue();clearQueueSources(exported);
     $('exportStatus').innerHTML='<span class="ok">Export complete: '+count+' ticket(s). The Tickets sheet contains only this export. Queue cleared for the next export.</span>';
   }catch(e){console.error(e);$('exportStatus').innerHTML='<span class="error">Export failed: '+escapeHtml(e.message||String(e))+'</span>';}
   finally{$('exportBtn').disabled=!(queue.length&&workbookBuffer);}
@@ -811,19 +832,19 @@ async function handleTicketFile(file){
   $('ocrText').value='';clearForm();
   const isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name||'');
   if(isPdf){
-    $('photoStatus').textContent='Opening PDF…';$('rotateBtn').disabled=true;$('extractBtn').disabled=true;
+    formatReferenceDataUrl=null;$('photoStatus').textContent='Opening PDF…';$('rotateBtn').disabled=true;$('extractBtn').disabled=true;
     try{await openPdfFile(file);}catch(e){resetPdfState();$('photoStatus').innerHTML='<span class="error">Could not open PDF: '+escapeHtml(e.message||String(e))+'</span>';}
     return;
   }
   resetPdfState();
-  const rd=new FileReader();rd.onload=()=>{photoDataUrl=rd.result;rotation=0;$('preview').style.transform='';$('preview').style.margin='0';$('preview').src=photoDataUrl;$('previewWrap').style.display='block';setSelectorImage(photoDataUrl);$('photoStatus').textContent=file.name;$('rotateBtn').disabled=false;$('extractBtn').disabled=false;};rd.readAsDataURL(file);
+  const rd=new FileReader();rd.onload=()=>{photoDataUrl=rd.result;formatReferenceDataUrl=photoDataUrl;rotation=0;$('preview').style.transform='';$('preview').style.margin='0';$('preview').src=photoDataUrl;$('previewWrap').style.display='block';setSelectorImage(photoDataUrl);$('photoStatus').textContent=file.name;$('rotateBtn').disabled=false;$('extractBtn').disabled=false;};rd.readAsDataURL(file);
 }
 $('photoFile').addEventListener('change',e=>handleTicketFile(e.target.files[0]));
 $('cameraFile').addEventListener('change',e=>handleTicketFile(e.target.files[0]));
 $('photoDrop').addEventListener('dragover',e=>{e.preventDefault();$('photoDrop').classList.add('drag')});$('photoDrop').addEventListener('dragleave',()=>$('photoDrop').classList.remove('drag'));$('photoDrop').addEventListener('drop',e=>{e.preventDefault();$('photoDrop').classList.remove('drag');const f=e.dataTransfer.files[0];if(!f||!(f.type.startsWith('image/')||f.type==='application/pdf'||/\.pdf$/i.test(f.name||'')))return;handleTicketFile(f);});
 function openFormatWorkspace(){
   const p=$('formatPanel');p.style.display='block';document.body.classList.add('formatOpen');$('toggleFormat').textContent='Ticket format open';
-  if(photoDataUrl)setSelectorImage(photoDataUrl);renderDefinitionState();installSelectorEvents();setTimeout(()=>{resizeSelectorCanvas();drawSelector()},80);
+  if(formatReferenceDataUrl||photoDataUrl)setSelectorImage(formatReferenceDataUrl||photoDataUrl);renderDefinitionState();installSelectorEvents();setTimeout(()=>{resizeSelectorCanvas();drawSelector()},80);
 }
 function closeFormatWorkspace(){const p=$('formatPanel');p.style.display='none';document.body.classList.remove('formatOpen');$('toggleFormat').textContent='Define ticket format';}
 $('toggleFormat').onclick=openFormatWorkspace;
@@ -842,7 +863,7 @@ $('rotateBtn').onclick=()=>{rotation=(rotation+90)%360;$('preview').style.transf
 $('pdfPrev').onclick=()=>pdfDoc&&pdfPageNumber>1&&renderPdfPageData(pdfPageNumber-1,true);
 $('pdfNext').onclick=()=>pdfDoc&&pdfPageNumber<pdfPageCount&&renderPdfPageData(pdfPageNumber+1,true);
 $('pdfExtractAll').onclick=extractAllPdfPages;
-$('extractBtn').onclick=runOCR;$('reparseBtn').onclick=()=>applyParsed(parseTicketText($('ocrText').value));$('queueBtn').onclick=addQueue;$('clearBtn').onclick=()=>clearForm();$('clearQueueBtn').onclick=()=>{if(confirm('Clear all queued tickets?')){queue=[];persistQueue();renderQueue();}};$('exportBtn').onclick=exportWorkbook;
+$('extractBtn').onclick=runOCR;$('reparseBtn').onclick=()=>applyParsed(parseTicketText($('ocrText').value));$('queueBtn').onclick=addQueue;$('clearBtn').onclick=()=>clearForm();$('clearQueueBtn').onclick=async()=>{if(confirm('Clear all queued tickets?')){const old=[...queue];queue=[];persistQueue();renderQueue();await clearQueueSources(old)}};$('exportBtn').onclick=exportWorkbook;
 restoreQueue();renderFields();clearForm();$('queueBtn').disabled=false;renderQueue();restoreWorkbookTemplate();
 </script>
 </body>
