@@ -180,63 +180,82 @@ const FIELD_DEFS = [
   {key:'coarse_name', label:'Coarse Aggregate Name', type:'text'},
   {key:'rock_batched', label:'Coarse Aggregate Batched Qty', type:'number'},
   {key:'rock_moisture', label:'Coarse Aggregate Moisture (%)', type:'number'},
+  {key:'coarse_water', label:'Coarse Aggregate Water', type:'number'},
   {key:'fine_name', label:'Fine Aggregate Name', type:'text'},
   {key:'sand_batched', label:'Fine Aggregate Batched Qty', type:'number'},
   {key:'sand_moisture', label:'Fine Aggregate Moisture (%)', type:'number'},
+  {key:'fine_water', label:'Fine Aggregate Water', type:'number'},
   {key:'cement_name', label:'Cement Name', type:'text'},
   {key:'cement_batched', label:'Cement Batched Qty', type:'number'},
+  {key:'cement_moisture', label:'Cement Moisture (%)', type:'number'},
+  {key:'cement_water', label:'Cement Water', type:'number'},
   {key:'scm1_name', label:'SCM #1 Name', type:'text'},
   {key:'flyash_batched', label:'SCM #1 Batched Qty', type:'number'},
+  {key:'scm1_moisture', label:'SCM #1 Moisture (%)', type:'number'},
+  {key:'scm1_water', label:'SCM #1 Water', type:'number'},
   {key:'water_name', label:'Water Name', type:'text'},
   {key:'water_batched', label:'Water Batched Qty', type:'number'},
+  {key:'water_moisture', label:'Water Moisture (%)', type:'number'},
+  {key:'water_water', label:'Water Water', type:'number'},
   {key:'total_water', label:'Total Water', type:'number'},
   {key:'wr_name', label:'Water Reducer Name', type:'text'},
   {key:'wr', label:'Water Reducer Batched Qty', type:'number'},
+  {key:'wr_moisture', label:'Water Reducer Moisture (%)', type:'number'},
+  {key:'wr_water', label:'Water Reducer Water', type:'number'},
   {key:'air_name', label:'Air Entrainment Name', type:'text'},
   {key:'air', label:'Air Entrainment Batched Qty', type:'number'},
+  {key:'air_moisture', label:'Air Entrainment Moisture (%)', type:'number'},
+  {key:'air_water', label:'Air Entrainment Water', type:'number'},
   {key:'wc_ratio_report', label:'Water/Cement Ratio', type:'number'},
   {key:'loaded_weight', label:'Loaded Weight', type:'number'},
   {key:'agg3_name', label:'Aggregate #3 Name', type:'text'},
   {key:'agg3_batched', label:'Aggregate #3 Batched Qty', type:'number'},
   {key:'agg3_moisture', label:'Aggregate #3 Moisture (%)', type:'number'},
+  {key:'agg3_water', label:'Aggregate #3 Water', type:'number'},
   {key:'agg4_name', label:'Aggregate #4 Name', type:'text'},
   {key:'agg4_batched', label:'Aggregate #4 Batched Qty', type:'number'},
   {key:'agg4_moisture', label:'Aggregate #4 Moisture (%)', type:'number'},
+  {key:'agg4_water', label:'Aggregate #4 Water', type:'number'},
   {key:'scm2_name', label:'SCM #2 Name', type:'text'},
   {key:'scm2_batched', label:'SCM #2 Batched Qty', type:'number'},
   {key:'scm2_moisture', label:'SCM #2 Moisture (%)', type:'number'},
+  {key:'scm2_water', label:'SCM #2 Water', type:'number'},
   {key:'scm3_name', label:'SCM #3 Name', type:'text'},
   {key:'scm3_batched', label:'SCM #3 Batched Qty', type:'number'},
   {key:'scm3_moisture', label:'SCM #3 Moisture (%)', type:'number'},
+  {key:'scm3_water', label:'SCM #3 Water', type:'number'},
   {key:'admix3_name', label:'Admix #3 Name', type:'text'},
   {key:'admix3', label:'Admix #3 Batched Qty', type:'number'},
   {key:'admix3_moisture', label:'Admix #3 Moisture (%)', type:'number'},
+  {key:'admix3_water', label:'Admix #3 Water', type:'number'},
   {key:'admix4_name', label:'Admix #4 Name', type:'text'},
   {key:'admix4', label:'Admix #4 Batched Qty', type:'number'},
   {key:'admix4_moisture', label:'Admix #4 Moisture (%)', type:'number'},
+  {key:'admix4_water', label:'Admix #4 Water', type:'number'},
   {key:'admix5_name', label:'Admix #5 Name', type:'text'},
   {key:'admix5', label:'Admix #5 Batched Qty', type:'number'},
   {key:'admix5_moisture', label:'Admix #5 Moisture (%)', type:'number'},
+  {key:'admix5_water', label:'Admix #5 Water', type:'number'},
   {key:'mix_code', label:'Mix Code', type:'text'}
 ];
 const TICKET_HEADERS = ["Ticket #","Volume delivered","Coarse aggregate Name","Coarse aggregate Batched Qty","Coarse aggregate Moisture","Coarse aggregate Water","Fine Aggregate Name","Fine Aggregate Batched Qty","Fine Aggregate Moisture","Fine Aggregate Water","Cement Name","Cement Batched Qty","Cement Moisture","Cement Water","SCM #1 Name","SCM #1 Batched Qty","SCM #1 Moisture","SCM #1 Water","Water Name","Water Batched Qty","Water Moisture","Water Water","Total Water","Water Reducer Name","Water Reducer Batched Qty","Water Reducer Moisture","Water Reducer Water","Air Entrainment Name","Air Entrainment Batched Qty","Air Entrainment Moisture","Air Entrainment Water","Water/Cement Ratio","Loaded Weight","Aggregate #3 Name","Aggregate #3 Batched Qty","Aggregate #3 Moisture","Aggregate #3 Water","Aggregate #4 Name","Aggregate #4 Batched Qty","Aggregate #4 Moisture","Aggregate #4 Water","SCM #2 Name","SCM #2 Batched Qty","SCM #2 Moisture","SCM #2 Water","SCM #3 Name","SCM #3 Batched Qty","SCM #3 Moisture","SCM #3 Water","Admix #3 Name","Admix #3 Batched Qty","Admix #3 Moisture","Admix #3 Water","Admix #4 Name","Admix #4 Batched Qty","Admix #4 Moisture","Admix #4 Water","Admix #5 Name","Admix #5 Batched Qty","Admix #5 Moisture","Admix #5 Water","Mix Code"];
 const EXPORT_MAP = {
   "Ticket #":['ticket','text'],"Volume delivered":['load_size','number'],
-  "Coarse aggregate Name":['coarse_name','text'],"Coarse aggregate Batched Qty":['rock_batched','number'],"Coarse aggregate Moisture":['rock_moisture','moisture'],
-  "Fine Aggregate Name":['fine_name','text'],"Fine Aggregate Batched Qty":['sand_batched','number'],"Fine Aggregate Moisture":['sand_moisture','moisture'],
-  "Cement Name":['cement_name','text'],"Cement Batched Qty":['cement_batched','number'],
-  "SCM #1 Name":['scm1_name','text'],"SCM #1 Batched Qty":['flyash_batched','number'],
-  "Water Name":['water_name','text'],"Water Batched Qty":['water_batched','number'],"Total Water":['total_water','number'],
-  "Water Reducer Name":['wr_name','text'],"Water Reducer Batched Qty":['wr','number'],
-  "Air Entrainment Name":['air_name','text'],"Air Entrainment Batched Qty":['air','number'],
+  "Coarse aggregate Name":['coarse_name','text'],"Coarse aggregate Batched Qty":['rock_batched','number'],"Coarse aggregate Moisture":['rock_moisture','moisture'],"Coarse aggregate Water":['coarse_water','number'],
+  "Fine Aggregate Name":['fine_name','text'],"Fine Aggregate Batched Qty":['sand_batched','number'],"Fine Aggregate Moisture":['sand_moisture','moisture'],"Fine Aggregate Water":['fine_water','number'],
+  "Cement Name":['cement_name','text'],"Cement Batched Qty":['cement_batched','number'],"Cement Moisture":['cement_moisture','moisture'],"Cement Water":['cement_water','number'],
+  "SCM #1 Name":['scm1_name','text'],"SCM #1 Batched Qty":['flyash_batched','number'],"SCM #1 Moisture":['scm1_moisture','moisture'],"SCM #1 Water":['scm1_water','number'],
+  "Water Name":['water_name','text'],"Water Batched Qty":['water_batched','number'],"Water Moisture":['water_moisture','moisture'],"Water Water":['water_water','number'],"Total Water":['total_water','number'],
+  "Water Reducer Name":['wr_name','text'],"Water Reducer Batched Qty":['wr','number'],"Water Reducer Moisture":['wr_moisture','moisture'],"Water Reducer Water":['wr_water','number'],
+  "Air Entrainment Name":['air_name','text'],"Air Entrainment Batched Qty":['air','number'],"Air Entrainment Moisture":['air_moisture','moisture'],"Air Entrainment Water":['air_water','number'],
   "Water/Cement Ratio":['wc_ratio_report','number'],"Loaded Weight":['loaded_weight','number'],
-  "Aggregate #3 Name":['agg3_name','text'],"Aggregate #3 Batched Qty":['agg3_batched','number'],"Aggregate #3 Moisture":['agg3_moisture','moisture'],
-  "Aggregate #4 Name":['agg4_name','text'],"Aggregate #4 Batched Qty":['agg4_batched','number'],"Aggregate #4 Moisture":['agg4_moisture','moisture'],
-  "SCM #2 Name":['scm2_name','text'],"SCM #2 Batched Qty":['scm2_batched','number'],"SCM #2 Moisture":['scm2_moisture','moisture'],
-  "SCM #3 Name":['scm3_name','text'],"SCM #3 Batched Qty":['scm3_batched','number'],"SCM #3 Moisture":['scm3_moisture','moisture'],
-  "Admix #3 Name":['admix3_name','text'],"Admix #3 Batched Qty":['admix3','number'],"Admix #3 Moisture":['admix3_moisture','moisture'],
-  "Admix #4 Name":['admix4_name','text'],"Admix #4 Batched Qty":['admix4','number'],"Admix #4 Moisture":['admix4_moisture','moisture'],
-  "Admix #5 Name":['admix5_name','text'],"Admix #5 Batched Qty":['admix5','number'],"Admix #5 Moisture":['admix5_moisture','moisture'],
+  "Aggregate #3 Name":['agg3_name','text'],"Aggregate #3 Batched Qty":['agg3_batched','number'],"Aggregate #3 Moisture":['agg3_moisture','moisture'],"Aggregate #3 Water":['agg3_water','number'],
+  "Aggregate #4 Name":['agg4_name','text'],"Aggregate #4 Batched Qty":['agg4_batched','number'],"Aggregate #4 Moisture":['agg4_moisture','moisture'],"Aggregate #4 Water":['agg4_water','number'],
+  "SCM #2 Name":['scm2_name','text'],"SCM #2 Batched Qty":['scm2_batched','number'],"SCM #2 Moisture":['scm2_moisture','moisture'],"SCM #2 Water":['scm2_water','number'],
+  "SCM #3 Name":['scm3_name','text'],"SCM #3 Batched Qty":['scm3_batched','number'],"SCM #3 Moisture":['scm3_moisture','moisture'],"SCM #3 Water":['scm3_water','number'],
+  "Admix #3 Name":['admix3_name','text'],"Admix #3 Batched Qty":['admix3','number'],"Admix #3 Moisture":['admix3_moisture','moisture'],"Admix #3 Water":['admix3_water','number'],
+  "Admix #4 Name":['admix4_name','text'],"Admix #4 Batched Qty":['admix4','number'],"Admix #4 Moisture":['admix4_moisture','moisture'],"Admix #4 Water":['admix4_water','number'],
+  "Admix #5 Name":['admix5_name','text'],"Admix #5 Batched Qty":['admix5','number'],"Admix #5 Moisture":['admix5_moisture','moisture'],"Admix #5 Water":['admix5_water','number'],
   "Mix Code":['mix_code','text']
 }
 const MATERIALS = {
@@ -261,20 +280,20 @@ const MATERIAL_DEF_ROWS=[
   ['scm2','SCM #2'],['scm3','SCM #3'],['admix3','Admix #3'],['admix4','Admix #4'],['admix5','Admix #5']
 ];
 const MATERIAL_FIELD_KEYS={
-  coarse:{name:'coarse_name',batched:'rock_batched',moisture:'rock_moisture',water:null},
-  fine:{name:'fine_name',batched:'sand_batched',moisture:'sand_moisture',water:null},
-  cement:{name:'cement_name',batched:'cement_batched',moisture:null,water:null},
-  scm1:{name:'scm1_name',batched:'flyash_batched',moisture:null,water:null},
-  water:{name:'water_name',batched:'water_batched',moisture:null,water:null},
-  wr:{name:'wr_name',batched:'wr',moisture:null,water:null},
-  air:{name:'air_name',batched:'air',moisture:null,water:null},
-  agg3:{name:'agg3_name',batched:'agg3_batched',moisture:'agg3_moisture',water:null},
-  agg4:{name:'agg4_name',batched:'agg4_batched',moisture:'agg4_moisture',water:null},
-  scm2:{name:'scm2_name',batched:'scm2_batched',moisture:'scm2_moisture',water:null},
-  scm3:{name:'scm3_name',batched:'scm3_batched',moisture:'scm3_moisture',water:null},
-  admix3:{name:'admix3_name',batched:'admix3',moisture:'admix3_moisture',water:null},
-  admix4:{name:'admix4_name',batched:'admix4',moisture:'admix4_moisture',water:null},
-  admix5:{name:'admix5_name',batched:'admix5',moisture:'admix5_moisture',water:null}
+  coarse:{name:'coarse_name',batched:'rock_batched',moisture:'rock_moisture',water:'coarse_water'},
+  fine:{name:'fine_name',batched:'sand_batched',moisture:'sand_moisture',water:'fine_water'},
+  cement:{name:'cement_name',batched:'cement_batched',moisture:'cement_moisture',water:'cement_water'},
+  scm1:{name:'scm1_name',batched:'flyash_batched',moisture:'scm1_moisture',water:'scm1_water'},
+  water:{name:'water_name',batched:'water_batched',moisture:'water_moisture',water:'water_water'},
+  wr:{name:'wr_name',batched:'wr',moisture:'wr_moisture',water:'wr_water'},
+  air:{name:'air_name',batched:'air',moisture:'air_moisture',water:'air_water'},
+  agg3:{name:'agg3_name',batched:'agg3_batched',moisture:'agg3_moisture',water:'agg3_water'},
+  agg4:{name:'agg4_name',batched:'agg4_batched',moisture:'agg4_moisture',water:'agg4_water'},
+  scm2:{name:'scm2_name',batched:'scm2_batched',moisture:'scm2_moisture',water:'scm2_water'},
+  scm3:{name:'scm3_name',batched:'scm3_batched',moisture:'scm3_moisture',water:'scm3_water'},
+  admix3:{name:'admix3_name',batched:'admix3',moisture:'admix3_moisture',water:'admix3_water'},
+  admix4:{name:'admix4_name',batched:'admix4',moisture:'admix4_moisture',water:'admix4_water'},
+  admix5:{name:'admix5_name',batched:'admix5',moisture:'admix5_moisture',water:'admix5_water'}
 };
 async function sbRest(path,opt={}){
   const r=await fetch(SB_URL+path,{...opt,headers:{apikey:SB_KEY,authorization:'Bearer '+sbToken,...(opt.headers||{})}});
@@ -285,6 +304,7 @@ async function loadAreaLayouts(){
   if(!sbToken||!sbUser)return;
   try{
     areaLayouts=await sbRest('/rest/v1/cm_ticket_area_layouts?select=id,name,regions,material_rows,reference_info,updated_at&order=updated_at.desc');
+    if(!activeLayout.id&&areaLayouts.length){const x=areaLayouts[0];activeLayout={id:x.id,name:x.name,regions:Array.isArray(x.regions)?x.regions:[],material_rows:x.material_rows||{}};$('layoutName').value=activeLayout.name||'';}
     renderLayoutSelect();
   }catch(e){console.warn(e)}
 }
@@ -301,7 +321,7 @@ function selectLayoutById(id){
 async function saveAreaLayout(){
   if(!sbUser)throw Error('Sign in required.');
   const name=$('layoutName').value.trim();if(!name)throw Error('Enter a layout name.');
-  const payload={user_id:sbUser.id,name,regions:activeLayout.regions||[],material_rows:activeLayout.material_rows||{},reference_info:{updated_from:'ticket_scanner'}};
+  const payload={user_id:sbUser.id,name,regions:activeLayout.regions||[],material_rows:activeLayout.material_rows||{},reference_info:{updated_from:'ticket_scanner'},updated_at:new Date().toISOString()};
   let rows;
   if(activeLayout.id){
     rows=await sbRest('/rest/v1/cm_ticket_area_layouts?id=eq.'+encodeURIComponent(activeLayout.id),{method:'PATCH',headers:{'content-type':'application/json',prefer:'return=representation'},body:JSON.stringify(payload)});
