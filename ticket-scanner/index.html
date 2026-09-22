@@ -89,7 +89,7 @@ body.formatOpen{overflow:hidden}
             <select id="layoutSelect"><option value="">New layout…</option></select>
             <input id="layoutName" placeholder="Layout name">
             <button id="saveLayout">Save layout</button>
-            <button id="clearLayoutDefs" class="secondary">Clear definitions</button>
+            <button id="clearLayoutDefs" class="secondary" disabled>Clear selected definition</button>
             <button id="deleteLayout" class="danger">Delete</button>
           </div>
           <div class="formatGrid">
@@ -346,7 +346,7 @@ function renderLayoutSelect(){
 function selectLayoutById(id){
   const found=areaLayouts.find(x=>x.id===id);
   activeLayout=found?{id:found.id,name:found.name,regions:Array.isArray(found.regions)?found.regions:[],material_rows:found.material_rows||{}}:emptyLayout();
-  $('layoutName').value=activeLayout.name||'';defineTarget=null;pendingRect=null;renderDefinitionState();drawSelector();
+  $('layoutName').value=activeLayout.name||'';defineTarget=null;pendingRect=null;$('clearLayoutDefs').disabled=true;renderDefinitionState();drawSelector();
 }
 async function saveAreaLayout(){
   if(!sbUser)throw Error('Sign in required.');
@@ -363,23 +363,38 @@ async function saveAreaLayout(){
   $('selectorStatus').innerHTML='<span class="ok">Layout saved. Applying it to all queued tickets…</span>';
   await reextractQueuedTicketsWithActiveLayout();
 }
-async function clearAreaLayoutDefinitions(){
-  const has=(activeLayout.regions?.length||0)>0||Object.keys(activeLayout.material_rows||{}).length>0;
-  if(!has){$('selectorStatus').textContent='This layout has no saved definitions to clear.';return}
-  if(!confirm('Clear every defined area in this layout? The layout name will remain, but all row/column/field boxes will be removed.'))return;
-  activeLayout.regions=[];activeLayout.material_rows={};defineTarget=null;pendingRect=null;markActiveTarget(null);
-  if(activeLayout.id){
-    const rows=await sbRest('/rest/v1/cm_ticket_area_layouts?id=eq.'+encodeURIComponent(activeLayout.id),{
-      method:'PATCH',
-      headers:{'content-type':'application/json',prefer:'return=representation'},
-      body:JSON.stringify({regions:[],material_rows:{},updated_at:new Date().toISOString()})
-    });
-    const row=rows?.[0];if(row){activeLayout.regions=[];activeLayout.material_rows={}}
-    const local=areaLayouts.find(x=>x.id===activeLayout.id);if(local){local.regions=[];local.material_rows={}}
+function clearSelectedLayoutDefinition(){
+  if(!defineTarget){
+    $('selectorStatus').textContent='Select a defined row, column, or other item first.';
+    return;
   }
+  let label='';
+  if(defineTarget.kind==='other'){
+    const labels={ticket:'Ticket #',load_size:'Volume Delivered',wc_ratio_report:'Water/Cement Ratio',loaded_weight:'Loaded Weight',mix_code:'Mix Code',total_water:'Total Water'};
+    const before=(activeLayout.regions||[]).length;
+    activeLayout.regions=(activeLayout.regions||[]).filter(x=>x.key!==defineTarget.key);
+    if(activeLayout.regions.length===before){$('selectorStatus').textContent='That item does not currently have a saved definition.';return}
+    label=labels[defineTarget.key]||defineTarget.key;
+  }else if(defineTarget.kind==='material'){
+    const mat=defineTarget.material,slot=defineTarget.slot,row=activeLayout.material_rows?.[mat];
+    const matLabel=MATERIAL_DEF_ROWS.find(x=>x[0]===mat)?.[1]||mat;
+    if(!row){$('selectorStatus').textContent='That material does not currently have a saved definition.';return}
+    if(slot==='row'){
+      delete activeLayout.material_rows[mat];
+      label=matLabel+' row and its columns';
+    }else{
+      if(!row.columns?.[slot]){$('selectorStatus').textContent='That column does not currently have a saved definition.';return}
+      delete row.columns[slot];
+      activeLayout.material_rows[mat]=row;
+      label=matLabel+' '+({name:'Name',batched:'Batched Qty',moisture:'Moisture',water:'Water'}[slot]||slot);
+    }
+  }else{
+    $('selectorStatus').textContent='Select a defined item first.';
+    return;
+  }
+  defineTarget=null;pendingRect=null;markActiveTarget(null);$('saveDefinedItem').disabled=true;$('clearLayoutDefs').disabled=true;
   renderDefinitionState();drawSelector();
-  $('selectorStatus').innerHTML='<span class="ok">Layout definitions cleared. The saved layout name remains. Define new areas and save when ready.</span>';
-  if($('layoutApplyStatus'))$('layoutApplyStatus').innerHTML='<span class="warning">Layout definitions were cleared. Existing queued values are unchanged until you define and save a new layout.</span>';
+  $('selectorStatus').innerHTML='<span class="ok">'+escapeHtml(label)+' cleared. Save the layout to apply this change to future extraction and the queue.</span>';
 }
 async function deleteAreaLayout(){
   if(!activeLayout.id)return;
@@ -401,6 +416,8 @@ function renderMaterialDefs(){
     const mat=btn.dataset.mat,slot=btn.dataset.slot,row=activeLayout.material_rows?.[mat];
     if(slot!=='row'&&(!row||row.y1==null)){alert('Define the material row first.');return}
     defineTarget={kind:'material',material:mat,slot};pendingRect=null;markActiveTarget(btn);
+    const existing=slot==='row'?row?.y1!=null:!!row?.columns?.[slot];
+    $('clearLayoutDefs').disabled=!existing;
     $('selectorStatus').textContent=slot==='row'?'Drag a box across the full printed row for '+MATERIAL_DEF_ROWS.find(x=>x[0]===mat)[1]+'.':'Drag around the '+btn.textContent.replace('✓ ','')+' column area. The saved row height will be used.';
     $('saveDefinedItem').disabled=true;drawSelector();
   });
@@ -409,7 +426,7 @@ function renderOtherDefined(){
   const b=$('otherDefinedList');if(!b)return;
   const labels={ticket:'Ticket #',load_size:'Volume Delivered',wc_ratio_report:'Water/Cement Ratio',loaded_weight:'Loaded Weight',mix_code:'Mix Code',total_water:'Total Water'};
   b.innerHTML=(activeLayout.regions||[]).map(r=>'<button class="secondary savedDef" data-region="'+r.key+'">✓ '+esc(labels[r.key]||r.key)+'</button>').join('');
-  b.querySelectorAll('[data-region]').forEach(x=>x.onclick=()=>{const r=(activeLayout.regions||[]).find(z=>z.key===x.dataset.region);if(r){defineTarget={kind:'other',key:r.key};pendingRect={...r.rect};$('otherItem').value=r.key;markActiveTarget(x);drawSelector();}});
+  b.querySelectorAll('[data-region]').forEach(x=>x.onclick=()=>{const r=(activeLayout.regions||[]).find(z=>z.key===x.dataset.region);if(r){defineTarget={kind:'other',key:r.key};pendingRect={...r.rect};$('otherItem').value=r.key;markActiveTarget(x);$('clearLayoutDefs').disabled=false;drawSelector();}});
 }
 function renderDefinitionState(){renderMaterialDefs();renderOtherDefined()}
 function markActiveTarget(el){document.querySelectorAll('.targetActive').forEach(x=>x.classList.remove('targetActive'));el?.classList.add('targetActive')}
@@ -474,7 +491,7 @@ function savePendingDefinition(){
     else{row.columns[slot]={x1:pendingRect.x1,x2:pendingRect.x2}}
     activeLayout.material_rows[mat]=row;
   }
-  pendingRect=null;defineTarget=null;$('saveDefinedItem').disabled=true;markActiveTarget(null);renderDefinitionState();drawSelector();$('selectorStatus').innerHTML='<span class="ok">Item saved in this layout. Save the layout when finished.</span>';
+  pendingRect=null;defineTarget=null;$('saveDefinedItem').disabled=true;$('clearLayoutDefs').disabled=true;markActiveTarget(null);renderDefinitionState();drawSelector();$('selectorStatus').innerHTML='<span class="ok">Item saved in this layout. Save the layout when finished.</span>';
 }
 function cropNormalized(dataUrl,r){
   return new Promise(async(resolve,reject)=>{try{const im=new Image();im.src=dataUrl;await im.decode();const x=Math.round(r.x1*im.naturalWidth),y=Math.round(r.y1*im.naturalHeight),w=Math.max(1,Math.round((r.x2-r.x1)*im.naturalWidth)),h=Math.max(1,Math.round((r.y2-r.y1)*im.naturalHeight));const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(im,x,y,w,h,0,0,w,h);resolve(cv.toDataURL('image/png',0.98))}catch(e){reject(e)}})
@@ -965,9 +982,9 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('formatPanel').st
 $('layoutSelect').onchange=e=>selectLayoutById(e.target.value);
 $('saveLayout').onclick=()=>saveAreaLayout().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
 $('applyLayoutQueue').onclick=()=>reextractQueuedTicketsWithActiveLayout().catch(e=>{$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>';if($('layoutApplyStatus'))$('layoutApplyStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>'});
-$('clearLayoutDefs').onclick=()=>clearAreaLayoutDefinitions().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
+$('clearLayoutDefs').onclick=clearSelectedLayoutDefinition;
 $('deleteLayout').onclick=()=>deleteAreaLayout().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
-$('defineOther').onclick=()=>{defineTarget={kind:'other',key:$('otherItem').value};pendingRect=null;markActiveTarget($('defineOther'));$('selectorStatus').textContent='Drag a box around the selected item on the reference ticket.';$('saveDefinedItem').disabled=true;drawSelector()};
+$('defineOther').onclick=()=>{const key=$('otherItem').value;defineTarget={kind:'other',key};pendingRect=null;markActiveTarget($('defineOther'));$('clearLayoutDefs').disabled=!(activeLayout.regions||[]).some(r=>r.key===key);$('selectorStatus').textContent='Drag a box around the selected item on the reference ticket.';$('saveDefinedItem').disabled=true;drawSelector()};
 $('saveDefinedItem').onclick=savePendingDefinition;
 $('zoomIn').onclick=()=>{selectorScale=Math.min(6,selectorScale+.25);applySelectorZoom()};
 $('zoomOut').onclick=()=>{selectorScale=Math.max(.75,selectorScale-.25);applySelectorZoom()};
