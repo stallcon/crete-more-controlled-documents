@@ -552,6 +552,15 @@ function normalizeNumericOcr(s){
     .replace(/\s+/g,' ')
     .trim();
 }
+function decimalSensitiveField(key){
+  return key==='wc_ratio_report'||key==='load_size'||/moisture$/.test(key);
+}
+function decimalPlacesForField(key){
+  if(key==='wc_ratio_report')return[2,3];
+  if(key==='load_size')return[1,2];
+  if(/moisture$/.test(key))return[1,2,3];
+  return[];
+}
 function numericCandidates(text,key){
   const rule=fieldOcrRule(key),clean=normalizeNumericOcr(text);
   const tokens=clean.match(/[-+]?\d[\d,]*(?:\.\d+)?\s*%?/g)||[];
@@ -560,32 +569,42 @@ function numericCandidates(text,key){
     const raw=raw0.trim(),hasDot=raw.includes('.'),hasPct=raw.includes('%');
     const compact=raw.replace(/,/g,'').replace('%','');
     const direct=Number(compact);
-    const add=(v,tag)=>{if(Number.isFinite(v)&&v>=rule.min&&v<=rule.max&&!out.some(x=>x.value===v&&x.tag===tag))out.push({value:v,raw,tag,hasDot,hasPct})};
-    add(direct,'direct');
+    const add=(v,tag,places=0)=>{if(Number.isFinite(v)&&v>=rule.min&&v<=rule.max&&!out.some(x=>x.value===v&&x.tag===tag))out.push({value:v,raw,tag,hasDot,hasPct,places})};
+    add(direct,'direct',hasDot?Math.max(0,(compact.split('.')[1]||'').length):0);
     if(!hasDot&&Number.isFinite(direct)){
-      if(/moisture$/.test(key)){
-        if(Math.abs(direct)>20){add(direct/10,'decimal-repair-1');add(direct/100,'decimal-repair-2')}
-      }else if(key==='wc_ratio_report'){
-        add(direct/100,'wc-decimal-repair');add(direct/10,'wc-decimal-repair-1');
-      }else if(key==='load_size'&&direct>30){
-        add(direct/10,'volume-decimal-repair');add(direct/100,'volume-decimal-repair-2');
+      for(const places of decimalPlacesForField(key)){
+        const div=10**places;
+        add(direct/div,'decimal-repair-'+places,places);
       }
     }
   }
   return out;
 }
 function chooseNumericCandidate(text,key){
-  const rule=fieldOcrRule(key),c=numericCandidates(text,key);
-  if(!c.length)return null;
+  const c=numericCandidates(text,key);if(!c.length)return null;
   let best=c[0],bestScore=-1e9;
   for(const x of c){
     let score=0;
     if(x.tag==='direct')score+=12;
-    if(x.hasDot)score+=10;
-    if(x.hasPct&&/moisture$/.test(key))score+=5;
-    if(/moisture$/.test(key)&&Math.abs(x.value)<=15)score+=3;
-    if(key==='wc_ratio_report'&&x.value>=0.25&&x.value<=0.75)score+=8;
-    if(key==='load_size'&&x.value>=1&&x.value<=15)score+=5;
+    if(x.hasDot)score+=24;
+    if(x.hasPct&&/moisture$/.test(key))score+=7;
+    if(key==='wc_ratio_report'){
+      if(x.value>=0.25&&x.value<=0.75)score+=18;
+      if(x.places===3)score+=3;
+    }
+    if(key==='load_size'){
+      if(x.value>=1&&x.value<=15)score+=10;
+      if(x.places===1)score+=5;
+    }
+    if(/moisture$/.test(key)){
+      if(Math.abs(x.value)<=10)score+=7;
+      if(x.places===2)score+=5;
+      if(x.places===1)score+=2;
+      // A no-dot direct value is intentionally not over-rewarded because 05/050
+      // are common OCR forms when the printed decimal disappears.
+      if(!x.hasDot&&x.tag==='direct')score-=4;
+    }
+    if(x.tag.startsWith('decimal-repair'))score-=2;
     if(score>bestScore){best=x;bestScore=score}
   }
   return best;
@@ -602,21 +621,37 @@ function parseAreaValue(key,text){
     return v?{value:v,raw:cleaned,valid:true,repair:'text'}:null;
   }
   const candidate=chooseNumericCandidate(cleaned,key);
-  return candidate?{value:candidate.value,raw:cleaned,valid:true,repair:candidate.tag}:null;
+  return candidate?{value:candidate.value,raw:cleaned,valid:true,repair:candidate.tag,decimalSeen:candidate.hasDot,places:candidate.places}:null;
 }
 async function prepareOcrCrop(dataUrl,variant='gray'){
   const im=new Image();im.src=dataUrl;await im.decode();
   const srcW=im.naturalWidth,srcH=im.naturalHeight;
-  const scale=Math.min(5,Math.max(2,110/Math.max(1,srcH)));
-  const border=24,w=Math.max(1,Math.round(srcW*scale)),h=Math.max(1,Math.round(srcH*scale));
+  const targetH=variant==='decimal'?220:110;
+  const maxScale=variant==='decimal'?9:5;
+  const scale=Math.min(maxScale,Math.max(2,targetH/Math.max(1,srcH)));
+  const border=variant==='decimal'?36:24,w=Math.max(1,Math.round(srcW*scale)),h=Math.max(1,Math.round(srcH*scale));
   const cv=document.createElement('canvas');cv.width=w+border*2;cv.height=h+border*2;
-  const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);ctx.drawImage(im,border,border,w,h);
+  const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.imageSmoothingEnabled=variant!=='decimal';
+  ctx.drawImage(im,border,border,w,h);
   const id=ctx.getImageData(0,0,cv.width,cv.height),d=id.data;
   for(let i=0;i<d.length;i+=4){
     let g=.299*d[i]+.587*d[i+1]+.114*d[i+2];
     if(variant==='threshold')g=g<178?0:255;
+    else if(variant==='decimal')g=g<208?0:255;
     else g=Math.max(0,Math.min(255,(g-128)*1.55+128));
     d[i]=d[i+1]=d[i+2]=g;
+  }
+  if(variant==='decimal'){
+    // One-pixel dilation after aggressive upscaling keeps tiny decimal points from vanishing.
+    const copy=new Uint8ClampedArray(d);
+    const W=cv.width,H=cv.height;
+    for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+      const i=(y*W+x)*4;if(copy[i]>20)continue;
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const j=((y+dy)*W+(x+dx))*4;d[j]=d[j+1]=d[j+2]=0;
+      }
+    }
   }
   ctx.putImageData(id,0,0);return cv.toDataURL('image/png',1);
 }
@@ -631,8 +666,10 @@ function scoreOcrAttempt(key,attempt){
   if(rule.kind==='text'){
     const len=String(parsed.value||'').length;if(len>=2)score+=8;if(len>50)score-=8;
   }else{
-    if(parsed.repair==='direct')score+=12;
-    if(parsed.repair&&parsed.repair.includes('repair'))score-=4;
+    if(parsed.repair==='direct')score+=10;
+    if(parsed.decimalSeen)score+=decimalSensitiveField(key)?24:8;
+    if(parsed.repair&&parsed.repair.includes('repair'))score-=3;
+    if(attempt.variant==='decimal'&&decimalSensitiveField(key))score+=8;
   }
   if(attempt.variant==='gray')score+=2;
   return score;
@@ -643,17 +680,35 @@ async function recognizeDefinedField(worker,key,crop){
   const gray=await prepareOcrCrop(crop,'gray');
   const r1=await worker.recognize(gray),p1=parseAreaValue(key,r1.data.text||'');
   attempts.push({variant:'gray',text:r1.data.text||'',confidence:Number(r1.data.confidence||0),parsed:p1});
+
+  if(decimalSensitiveField(key)){
+    const dec=await prepareOcrCrop(crop,'decimal');
+    const rule=fieldOcrRule(key),wordPsm=(Tesseract.PSM&&Tesseract.PSM.SINGLE_WORD)||'8';
+    await worker.setParameters({tessedit_pageseg_mode:wordPsm,preserve_interword_spaces:'0',tessedit_char_whitelist:rule.whitelist||'0123456789.,-%',user_defined_dpi:'300'});
+    const rd=await worker.recognize(dec),pd=parseAreaValue(key,rd.data.text||'');
+    attempts.push({variant:'decimal',text:rd.data.text||'',confidence:Number(rd.data.confidence||0),parsed:pd});
+    await configureWorkerForField(worker,key);
+  }
+
   const minConf=fieldOcrRule(key).kind==='text'?68:78;
   if(!p1||Number(r1.data.confidence||0)<minConf){
     const bw=await prepareOcrCrop(crop,'threshold');
     const r2=await worker.recognize(bw),p2=parseAreaValue(key,r2.data.text||'');
     attempts.push({variant:'threshold',text:r2.data.text||'',confidence:Number(r2.data.confidence||0),parsed:p2});
   }
+
   attempts.sort((a,b)=>scoreOcrAttempt(key,b)-scoreOcrAttempt(key,a));
   const best=attempts[0];
   if(!best?.parsed)return{value:'',confidence:0,rawText:attempts.map(a=>a.text).join(' | '),source:'Defined area · no valid value',reviewRequired:true};
-  const conf=Math.round(best.confidence||0),reviewRequired=conf<(fieldOcrRule(key).kind==='text'?65:72)||best.parsed.repair!=='direct'&&best.parsed.repair!=='text'&&best.parsed.repair!=='ticket';
-  return{value:best.parsed.value,confidence:conf,rawText:best.text,source:'Defined area'+(best.parsed.repair&&best.parsed.repair!=='direct'?' · '+best.parsed.repair:''),reviewRequired};
+  const conf=Math.round(best.confidence||0);
+  const decimalMissing=decimalSensitiveField(key)&&!best.parsed.decimalSeen;
+  const repaired=best.parsed.repair&&best.parsed.repair.includes('repair');
+  const reviewRequired=conf<(fieldOcrRule(key).kind==='text'?65:72)||decimalMissing||repaired;
+  return{
+    value:best.parsed.value,confidence:conf,rawText:best.text,
+    source:'Defined area'+(best.variant==='decimal'?' · decimal pass':'')+(repaired?' · '+best.parsed.repair:''),
+    reviewRequired,decimalSeen:!!best.parsed.decimalSeen
+  };
 }
 function anchorToken(s){
   const words=String(s||'').toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').split(/\s+/).filter(w=>w.length>=3);
@@ -733,9 +788,9 @@ function parseFieldFromPageWords(key,words,r){
   const text=selected.map(w=>w.text).join(' ').replace(/\s+/g,' ').trim();
   const parsed=parseAreaValue(key,text);if(!parsed)return null;
   const conf=Math.round(selected.reduce((s,w)=>s+Math.max(0,w.conf),0)/selected.length);
-  const rule=fieldOcrRule(key);
-  const reviewRequired=conf<(rule.kind==='text'?62:68)||parsed.repair&&parsed.repair.includes('repair');
-  return{value:parsed.value,confidence:conf,rawText:text,source:'Full-ticket OCR · defined area',reviewRequired};
+  const rule=fieldOcrRule(key),decimalMissing=decimalSensitiveField(key)&&!parsed.decimalSeen;
+  const reviewRequired=conf<(rule.kind==='text'?62:68)||decimalMissing||parsed.repair&&parsed.repair.includes('repair');
+  return{value:parsed.value,confidence:conf,rawText:text,source:'Full-ticket OCR · defined area',reviewRequired,decimalSeen:!!parsed.decimalSeen};
 }
 async function buildAlignmentTransform(worker,dataUrl,pageOcr=null){
   const all=pageOcr||await buildFullPageOcr(worker,dataUrl),found=findAnchorMatches(all.words),transform=transformFromAnchorMatches(found.matches);
@@ -756,10 +811,10 @@ async function extractWithSavedAreas(dataUrl){
     total++;$('photoStatus').textContent='Extracting '+key+' ('+total+')'+alignNote+'…';
     const mapped=mapAlignedRect(alignment.transform,r);
     let field=parseFieldFromPageWords(key,pageOcr.words,mapped);
-    const weak=!field||field.value===''||field.confidence<(fieldOcrRule(key).kind==='text'?58:66);
+    const weak=!field||field.value===''||field.confidence<(fieldOcrRule(key).kind==='text'?58:66)||(decimalSensitiveField(key)&&!field.decimalSeen);
     if(weak){
       const crop=await cropNormalized(dataUrl,mapped),fallback=await recognizeDefinedField(worker,key,crop);
-      if(!field||fallback.confidence>=field.confidence-3)field=fallback;
+      if(!field||(decimalSensitiveField(key)&&fallback.decimalSeen&&!field.decimalSeen)||fallback.confidence>=field.confidence-3)field=fallback;
       if(field)field.source=(field.source||'Defined area')+' · crop fallback';
     }
     if(field&&field.value!==''&&field.value!=null){
