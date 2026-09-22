@@ -23,7 +23,8 @@
     .notice{padding:10px 12px;border-radius:8px;background:#fff8e6;border:1px solid #ead59d;font-size:12px;color:#654b0c}.footerNote{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.45}
     @media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}.advanced{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.fields,.advanced{grid-template-columns:1fr}.wide{grid-column:auto}}
   .loginGate{position:fixed;inset:0;z-index:9999;background:#f4f6f8;display:flex;align-items:flex-start;justify-content:center;padding:8vh 16px}.loginCard{width:min(430px,100%);background:white;border:1px solid #d9e0e6;border-radius:12px;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.08)}.loginCard input{width:100%;padding:11px;border:1px solid #d9e0e6;border-radius:8px;margin:5px 0 10px}.loginCard h2{margin-top:0}.signedInBar{position:fixed;right:12px;top:12px;z-index:100;background:#fff;color:#17202a;border-radius:8px;padding:7px 9px;font-size:11px;box-shadow:0 1px 4px #0002}.signedInBar button{padding:5px 7px;margin-left:6px}.accountSave{font-size:11px;color:#65717d;margin-top:6px}
-  </style>
+  .formatCard{margin-top:14px;border-top:1px solid var(--line);padding-top:14px}.formatGrid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px}.selectorViewport{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:#222;min-height:280px;touch-action:none}.selectorViewport img{display:block;width:100%;height:auto;user-select:none;pointer-events:none;transform-origin:0 0}.selectorViewport canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}.materialTable button{padding:6px 8px;font-size:11px}.materialTable td,.materialTable th{padding:6px}.savedDef{background:#dff3e5!important;color:#155c2b!important}.targetActive{outline:3px solid #c58b13}.formatList{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.formatList button{padding:6px 8px;font-size:11px}.selectorHelp{font-size:11px;color:var(--muted);line-height:1.4}.formatActions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.formatActions input,.formatActions select{padding:8px;border:1px solid var(--line);border-radius:7px}.layoutLine{display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;margin-bottom:10px}.layoutLine input,.layoutLine select{padding:8px;border:1px solid var(--line);border-radius:7px;width:100%}@media(max-width:900px){.formatGrid{grid-template-columns:1fr}.layoutLine{grid-template-columns:1fr 1fr}.selectorViewport{min-height:220px}}
+</style>
 </head>
 <body>
 <div id="loginGate" class="loginGate">
@@ -60,6 +61,49 @@
       <div id="pdfControls" class="row" style="display:none;margin-top:10px"><button id="pdfPrev" class="secondary">← Previous page</button><span id="pdfPageLabel" class="status" style="margin:0"></span><button id="pdfNext" class="secondary">Next page →</button><button id="pdfExtractAll">Extract all PDF pages</button></div>
       <div class="row" style="margin-top:10px"><button id="rotateBtn" class="secondary" disabled>Rotate 90°</button><button id="extractBtn" disabled>Extract current ticket/page</button></div>
       <progress id="ocrProgress" value="0" max="100" style="display:none"></progress>
+      <div class="formatCard">
+        <div class="row" style="justify-content:space-between"><div><strong>Ticket format</strong><div class="selectorHelp">Use one reference ticket to define reusable areas. Define each material row first, then its Name / Batched Qty / Moisture / Water columns. The saved format is applied to later photos and PDF pages.</div></div><button id="toggleFormat" class="secondary">Define ticket format</button></div>
+        <div id="formatPanel" style="display:none;margin-top:12px">
+          <div class="layoutLine">
+            <select id="layoutSelect"><option value="">New layout…</option></select>
+            <input id="layoutName" placeholder="Layout name">
+            <button id="saveLayout">Save layout</button>
+            <button id="deleteLayout" class="danger">Delete</button>
+          </div>
+          <div class="formatGrid">
+            <div>
+              <div class="selectorViewport" id="selectorViewport">
+                <img id="selectorImage" alt="Reference ticket">
+                <canvas id="selectorCanvas"></canvas>
+              </div>
+              <div class="formatActions">
+                <button id="zoomOut" class="secondary">− Zoom</button>
+                <button id="zoomIn" class="secondary">+ Zoom</button>
+                <button id="resetZoom" class="secondary">Reset zoom</button>
+                <button id="saveDefinedItem" disabled>Save item</button>
+              </div>
+              <div id="selectorStatus" class="status">Load a ticket or PDF page, choose an item, then drag a box over its location.</div>
+            </div>
+            <div>
+              <div class="step">Materials</div>
+              <div class="tableWrap" style="max-height:340px">
+                <table class="materialTable"><thead><tr><th>Material</th><th>Row</th><th>Name</th><th>Batched Qty</th><th>Moisture</th><th>Water</th></tr></thead><tbody id="materialDefs"></tbody></table>
+              </div>
+              <div class="step" style="margin-top:12px">Other defined items</div>
+              <div class="row"><select id="otherItem" style="padding:8px;border:1px solid var(--line);border-radius:7px;flex:1">
+                <option value="ticket">Ticket #</option>
+                <option value="load_size">Volume Delivered</option>
+                <option value="wc_ratio_report">Water/Cement Ratio</option>
+                <option value="loaded_weight">Loaded Weight</option>
+                <option value="mix_code">Mix Code</option>
+                <option value="total_water">Total Water</option>
+              </select><button id="defineOther" class="secondary">Item to define</button></div>
+              <div id="otherDefinedList" class="formatList"></div>
+              <details style="margin-top:12px"><summary>Advanced options</summary><div class="selectorHelp" style="margin-top:8px">Material columns use the saved material row height and the horizontal column area you define. Drag the box around the printed value/heading area. Two-finger pinch or the zoom buttons can enlarge the reference ticket.</div></details>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 
@@ -98,7 +142,7 @@ async function validateLogin(){
 function showExtractor(){
   document.getElementById('loginGate').style.display='none';
   document.getElementById('signedInBar').hidden=false;
-  document.getElementById('signedInAs').textContent=sbUser?.email||'Signed in';
+  document.getElementById('signedInAs').textContent=sbUser?.email||'Signed in';loadAreaLayouts();
 }
 async function startLogin(){
   const msg=document.getElementById('loginMsg'); msg.textContent='Signing in…';
@@ -207,8 +251,180 @@ let workbookBuffer = null, workbookName = '', workbookMeta = null;
 let photoDataUrl = null, rotation = 0, queue = [], lastDetected = {};
 let ocrWorker = null, ticketSourceFile = null;
 let pdfJs = null, pdfDoc = null, pdfPageNumber = 1, pdfPageCount = 0, pdfPageResults = new Map();
+let areaLayouts=[],activeLayout={id:null,name:'',regions:[],material_rows:{}},defineTarget=null,pendingRect=null,selectorScale=1;
+let pointerStart=null,pinchStart=null;
 
 const $ = id => document.getElementById(id);
+const MATERIAL_DEF_ROWS=[
+  ['coarse','Coarse Aggregate'],['fine','Fine Aggregate'],['cement','Cement'],['scm1','SCM #1'],['water','Water'],
+  ['wr','Water Reducer'],['air','Air Entrainment'],['agg3','Aggregate #3'],['agg4','Aggregate #4'],
+  ['scm2','SCM #2'],['scm3','SCM #3'],['admix3','Admix #3'],['admix4','Admix #4'],['admix5','Admix #5']
+];
+const MATERIAL_FIELD_KEYS={
+  coarse:{name:'coarse_name',batched:'rock_batched',moisture:'rock_moisture',water:null},
+  fine:{name:'fine_name',batched:'sand_batched',moisture:'sand_moisture',water:null},
+  cement:{name:'cement_name',batched:'cement_batched',moisture:null,water:null},
+  scm1:{name:'scm1_name',batched:'flyash_batched',moisture:null,water:null},
+  water:{name:'water_name',batched:'water_batched',moisture:null,water:null},
+  wr:{name:'wr_name',batched:'wr',moisture:null,water:null},
+  air:{name:'air_name',batched:'air',moisture:null,water:null},
+  agg3:{name:'agg3_name',batched:'agg3_batched',moisture:'agg3_moisture',water:null},
+  agg4:{name:'agg4_name',batched:'agg4_batched',moisture:'agg4_moisture',water:null},
+  scm2:{name:'scm2_name',batched:'scm2_batched',moisture:'scm2_moisture',water:null},
+  scm3:{name:'scm3_name',batched:'scm3_batched',moisture:'scm3_moisture',water:null},
+  admix3:{name:'admix3_name',batched:'admix3',moisture:'admix3_moisture',water:null},
+  admix4:{name:'admix4_name',batched:'admix4',moisture:'admix4_moisture',water:null},
+  admix5:{name:'admix5_name',batched:'admix5',moisture:'admix5_moisture',water:null}
+};
+async function sbRest(path,opt={}){
+  const r=await fetch(SB_URL+path,{...opt,headers:{apikey:SB_KEY,authorization:'Bearer '+sbToken,...(opt.headers||{})}});
+  const tx=await r.text(),d=tx?JSON.parse(tx):null;if(!r.ok)throw Error(d?.message||d?.error||'Supabase request failed');return d;
+}
+function emptyLayout(){return{id:null,name:'',regions:[],material_rows:{}}}
+async function loadAreaLayouts(){
+  if(!sbToken||!sbUser)return;
+  try{
+    areaLayouts=await sbRest('/rest/v1/cm_ticket_area_layouts?select=id,name,regions,material_rows,reference_info,updated_at&order=updated_at.desc');
+    renderLayoutSelect();
+  }catch(e){console.warn(e)}
+}
+function renderLayoutSelect(){
+  const s=$('layoutSelect');if(!s)return;
+  const current=activeLayout.id||'';s.innerHTML='<option value="">New layout…</option>'+areaLayouts.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
+  s.value=current;renderDefinitionState();
+}
+function selectLayoutById(id){
+  const found=areaLayouts.find(x=>x.id===id);
+  activeLayout=found?{id:found.id,name:found.name,regions:Array.isArray(found.regions)?found.regions:[],material_rows:found.material_rows||{}}:emptyLayout();
+  $('layoutName').value=activeLayout.name||'';defineTarget=null;pendingRect=null;renderDefinitionState();drawSelector();
+}
+async function saveAreaLayout(){
+  if(!sbUser)throw Error('Sign in required.');
+  const name=$('layoutName').value.trim();if(!name)throw Error('Enter a layout name.');
+  const payload={user_id:sbUser.id,name,regions:activeLayout.regions||[],material_rows:activeLayout.material_rows||{},reference_info:{updated_from:'ticket_scanner'}};
+  let rows;
+  if(activeLayout.id){
+    rows=await sbRest('/rest/v1/cm_ticket_area_layouts?id=eq.'+encodeURIComponent(activeLayout.id),{method:'PATCH',headers:{'content-type':'application/json',prefer:'return=representation'},body:JSON.stringify(payload)});
+  }else{
+    rows=await sbRest('/rest/v1/cm_ticket_area_layouts',{method:'POST',headers:{'content-type':'application/json',prefer:'return=representation'},body:JSON.stringify(payload)});
+  }
+  const row=rows?.[0];if(row)activeLayout={id:row.id,name:row.name,regions:row.regions||[],material_rows:row.material_rows||{}};
+  await loadAreaLayouts();$('layoutSelect').value=activeLayout.id||'';$('selectorStatus').innerHTML='<span class="ok">Layout saved to your account.</span>';
+}
+async function deleteAreaLayout(){
+  if(!activeLayout.id)return;
+  if(!confirm('Delete this saved ticket layout?'))return;
+  await sbRest('/rest/v1/cm_ticket_area_layouts?id=eq.'+encodeURIComponent(activeLayout.id),{method:'DELETE'});
+  activeLayout=emptyLayout();$('layoutName').value='';await loadAreaLayouts();drawSelector();
+}
+function renderMaterialDefs(){
+  const b=$('materialDefs');if(!b)return;b.innerHTML='';
+  for(const [key,label] of MATERIAL_DEF_ROWS){
+    const row=activeLayout.material_rows?.[key]||{},cols=row.columns||{};
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td><b>'+esc(label)+'</b></td>'+
+      '<td><button class="secondary '+(row.y1!=null?'savedDef':'')+'" data-mat="'+key+'" data-slot="row">'+(row.y1!=null?'✓ Row':'Set row')+'</button></td>'+
+      ['name','batched','moisture','water'].map(slot=>'<td><button class="secondary '+(cols[slot]?'savedDef':'')+'" data-mat="'+key+'" data-slot="'+slot+'" '+(row.y1==null?'disabled':'')+'>'+({name:'Name',batched:'Batched Qty',moisture:'Moisture',water:'Water'}[slot])+'</button></td>').join('');
+    b.appendChild(tr);
+  }
+  b.querySelectorAll('button[data-mat]').forEach(btn=>btn.onclick=()=>{
+    const mat=btn.dataset.mat,slot=btn.dataset.slot,row=activeLayout.material_rows?.[mat];
+    if(slot!=='row'&&(!row||row.y1==null)){alert('Define the material row first.');return}
+    defineTarget={kind:'material',material:mat,slot};pendingRect=null;markActiveTarget(btn);
+    $('selectorStatus').textContent=slot==='row'?'Drag a box across the full printed row for '+MATERIAL_DEF_ROWS.find(x=>x[0]===mat)[1]+'.':'Drag around the '+btn.textContent.replace('✓ ','')+' column area. The saved row height will be used.';
+    $('saveDefinedItem').disabled=true;drawSelector();
+  });
+}
+function renderOtherDefined(){
+  const b=$('otherDefinedList');if(!b)return;
+  const labels={ticket:'Ticket #',load_size:'Volume Delivered',wc_ratio_report:'Water/Cement Ratio',loaded_weight:'Loaded Weight',mix_code:'Mix Code',total_water:'Total Water'};
+  b.innerHTML=(activeLayout.regions||[]).map(r=>'<button class="secondary savedDef" data-region="'+r.key+'">✓ '+esc(labels[r.key]||r.key)+'</button>').join('');
+  b.querySelectorAll('[data-region]').forEach(x=>x.onclick=()=>{const r=(activeLayout.regions||[]).find(z=>z.key===x.dataset.region);if(r){defineTarget={kind:'other',key:r.key};pendingRect={...r.rect};$('otherItem').value=r.key;markActiveTarget(x);drawSelector();}});
+}
+function renderDefinitionState(){renderMaterialDefs();renderOtherDefined()}
+function markActiveTarget(el){document.querySelectorAll('.targetActive').forEach(x=>x.classList.remove('targetActive'));el?.classList.add('targetActive')}
+function setSelectorImage(src){
+  if(!src)return;const im=$('selectorImage');im.onload=()=>{resizeSelectorCanvas();drawSelector()};im.src=src;selectorScale=1;applySelectorZoom();
+}
+function resizeSelectorCanvas(){
+  const im=$('selectorImage'),cv=$('selectorCanvas');if(!im||!cv)return;
+  const rect=im.getBoundingClientRect();cv.width=Math.max(1,Math.round(rect.width));cv.height=Math.max(1,Math.round(rect.height));cv.style.width=rect.width+'px';cv.style.height=rect.height+'px';
+}
+function applySelectorZoom(){
+  const im=$('selectorImage'),cv=$('selectorCanvas');if(!im||!cv)return;
+  im.style.width=(selectorScale*100)+'%';cv.style.width=(selectorScale*100)+'%';cv.style.height='auto';setTimeout(()=>{resizeSelectorCanvas();drawSelector()},30);
+}
+function normRect(a,b,cv){
+  const x1=Math.max(0,Math.min(a.x,b.x)),x2=Math.min(cv.width,Math.max(a.x,b.x)),y1=Math.max(0,Math.min(a.y,b.y)),y2=Math.min(cv.height,Math.max(a.y,b.y));
+  return{x1:x1/cv.width,x2:x2/cv.width,y1:y1/cv.height,y2:y2/cv.height};
+}
+function drawBox(ctx,r,w,h,label,color='#ffcc00'){
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.strokeRect(r.x1*w,r.y1*h,(r.x2-r.x1)*w,(r.y2-r.y1)*h);
+  if(label){ctx.font='11px Arial';ctx.fillStyle=color;ctx.fillText(label,r.x1*w+3,Math.max(12,r.y1*h+12))}
+}
+function drawSelector(){
+  const cv=$('selectorCanvas');if(!cv)return;const ctx=cv.getContext('2d');ctx.clearRect(0,0,cv.width,cv.height);
+  (activeLayout.regions||[]).forEach(r=>drawBox(ctx,r.rect,cv.width,cv.height,r.key,'#65d67b'));
+  for(const [mat,row] of Object.entries(activeLayout.material_rows||{})){
+    if(row?.y1==null)continue;
+    const rr={x1:0,x2:1,y1:row.y1,y2:row.y2};drawBox(ctx,rr,cv.width,cv.height,mat,'#53a7ff');
+    for(const [slot,col] of Object.entries(row.columns||{})){const cr={x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2};drawBox(ctx,cr,cv.width,cv.height,mat+' '+slot,'#ad7cff')}
+  }
+  if(pendingRect)drawBox(ctx,pendingRect,cv.width,cv.height,'pending','#ffcc00');
+}
+function pointerPos(e,cv){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*(cv.width/r.width),y:(e.clientY-r.top)*(cv.height/r.height)}}
+function installSelectorEvents(){
+  const cv=$('selectorCanvas');if(!cv)return;
+  cv.onpointerdown=e=>{if(!defineTarget)return;cv.setPointerCapture(e.pointerId);pointerStart=pointerPos(e,cv);pendingRect=null};
+  cv.onpointermove=e=>{if(!pointerStart||!defineTarget)return;pendingRect=normRect(pointerStart,pointerPos(e,cv),cv);$('saveDefinedItem').disabled=false;drawSelector()};
+  cv.onpointerup=e=>{if(!pointerStart)return;pendingRect=normRect(pointerStart,pointerPos(e,cv),cv);pointerStart=null;$('saveDefinedItem').disabled=!pendingRect;drawSelector()};
+  let touches=new Map();
+  cv.addEventListener('pointerdown',e=>{touches.set(e.pointerId,{x:e.clientX,y:e.clientY});if(touches.size===2){const a=[...touches.values()];pinchStart={dist:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),scale:selectorScale}}});
+  cv.addEventListener('pointermove',e=>{if(!touches.has(e.pointerId))return;touches.set(e.pointerId,{x:e.clientX,y:e.clientY});if(touches.size===2&&pinchStart){const a=[...touches.values()],d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);selectorScale=Math.max(1,Math.min(4,pinchStart.scale*d/pinchStart.dist));applySelectorZoom()}});
+  const clearTouch=e=>{touches.delete(e.pointerId);if(touches.size<2)pinchStart=null};cv.addEventListener('pointerup',clearTouch);cv.addEventListener('pointercancel',clearTouch);
+}
+function savePendingDefinition(){
+  if(!defineTarget||!pendingRect)return;
+  if(defineTarget.kind==='other'){
+    activeLayout.regions=(activeLayout.regions||[]).filter(x=>x.key!==defineTarget.key);
+    activeLayout.regions.push({key:defineTarget.key,rect:{...pendingRect}});
+  }else{
+    const mat=defineTarget.material,slot=defineTarget.slot;
+    activeLayout.material_rows=activeLayout.material_rows||{};const row=activeLayout.material_rows[mat]||{columns:{}};
+    row.columns=row.columns||{};
+    if(slot==='row'){row.y1=pendingRect.y1;row.y2=pendingRect.y2}
+    else{row.columns[slot]={x1:pendingRect.x1,x2:pendingRect.x2}}
+    activeLayout.material_rows[mat]=row;
+  }
+  pendingRect=null;defineTarget=null;$('saveDefinedItem').disabled=true;markActiveTarget(null);renderDefinitionState();drawSelector();$('selectorStatus').innerHTML='<span class="ok">Item saved in this layout. Save the layout when finished.</span>';
+}
+function cropNormalized(dataUrl,r){
+  return new Promise(async(resolve,reject)=>{try{const im=new Image();im.src=dataUrl;await im.decode();const x=Math.round(r.x1*im.naturalWidth),y=Math.round(r.y1*im.naturalHeight),w=Math.max(1,Math.round((r.x2-r.x1)*im.naturalWidth)),h=Math.max(1,Math.round((r.y2-r.y1)*im.naturalHeight));const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(im,x,y,w,h,0,0,w,h);resolve(cv.toDataURL('image/png',0.98))}catch(e){reject(e)}})
+}
+function parseAreaValue(key,text){
+  const cleaned=normalizeText(text);
+  if(['coarse_name','fine_name','cement_name','scm1_name','water_name','wr_name','air_name','agg3_name','agg4_name','scm2_name','scm3_name','admix3_name','admix4_name','admix5_name','mix_code','ticket'].includes(key)){
+    if(key==='ticket'){const m=cleaned.match(/\b\d{3,12}\b/);return m?m[0]:cleaned.split('\n')[0]?.trim()||''}
+    return cleaned.replace(/\n+/g,' ').trim().slice(0,80);
+  }
+  const nums=numTokens(cleaned);if(!nums.length)return '';
+  let v=nums[nums.length-1].value;if(/moisture/.test(key)&&v<=0.2)v*=100;return v;
+}
+async function extractWithSavedAreas(dataUrl){
+  if(!(activeLayout.regions?.length)||!Object.keys(activeLayout.material_rows||{}).length)throw Error('No defined areas in selected layout.');
+  const worker=await ensureOcrWorker(),parsed={};
+  const recognizeRect=async(key,r)=>{
+    const crop=await cropNormalized(dataUrl,r),res=await worker.recognize(crop),txt=res.data.text||'',value=parseAreaValue(key,txt);
+    if(value!==''&&value!=null)parsed[key]={value,source:'Defined area: '+key};
+  };
+  for(const r of activeLayout.regions||[])await recognizeRect(r.key,r.rect);
+  for(const [mat,row] of Object.entries(activeLayout.material_rows||{})){
+    if(row?.y1==null)continue;const map=MATERIAL_FIELD_KEYS[mat]||{};
+    for(const [slot,col] of Object.entries(row.columns||{})){const key=map[slot];if(!key)continue;await recognizeRect(key,{x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2})}
+  }
+  return{text:'Area-defined extraction',parsed};
+}
+
 
 function renderFields(){
   const box = $('fields'); box.innerHTML='';
@@ -361,7 +577,7 @@ async function renderPdfPageData(pageNumber,updateUi=true){
   const dataUrl=canvas.toDataURL('image/png',0.96);
   if(updateUi){
     pdfPageNumber=pageNumber;photoDataUrl=dataUrl;rotation=0;
-    $('preview').style.transform='';$('preview').style.margin='0';$('preview').src=dataUrl;$('previewWrap').style.display='block';
+    $('preview').style.transform='';$('preview').style.margin='0';$('preview').src=dataUrl;$('previewWrap').style.display='block';setSelectorImage(dataUrl);
     $('pdfPageLabel').textContent='Page '+pdfPageNumber+' of '+pdfPageCount;
     $('pdfPrev').disabled=pdfPageNumber<=1;$('pdfNext').disabled=pdfPageNumber>=pdfPageCount;
     $('photoStatus').innerHTML='<span class="ok">PDF loaded · page '+pdfPageNumber+' of '+pdfPageCount+'. Extract this page or extract all pages.</span>';
@@ -393,6 +609,10 @@ async function ensureOcrWorker(){
   return ocrWorker;
 }
 async function recognizeTicketImage(dataUrl){
+  const hasLayout=(activeLayout.regions?.length||0)+Object.keys(activeLayout.material_rows||{}).length>0;
+  if(hasLayout){
+    try{return await extractWithSavedAreas(dataUrl)}catch(e){console.warn('Defined-area extraction fallback',e)}
+  }
   const processed=await preprocessImage(dataUrl);
   const worker=await ensureOcrWorker();
   const result=await worker.recognize(processed);
@@ -546,11 +766,21 @@ async function handleTicketFile(file){
     return;
   }
   resetPdfState();
-  const rd=new FileReader();rd.onload=()=>{photoDataUrl=rd.result;rotation=0;$('preview').style.transform='';$('preview').style.margin='0';$('preview').src=photoDataUrl;$('previewWrap').style.display='block';$('photoStatus').textContent=file.name;$('rotateBtn').disabled=false;$('extractBtn').disabled=false;};rd.readAsDataURL(file);
+  const rd=new FileReader();rd.onload=()=>{photoDataUrl=rd.result;rotation=0;$('preview').style.transform='';$('preview').style.margin='0';$('preview').src=photoDataUrl;$('previewWrap').style.display='block';setSelectorImage(photoDataUrl);$('photoStatus').textContent=file.name;$('rotateBtn').disabled=false;$('extractBtn').disabled=false;};rd.readAsDataURL(file);
 }
 $('photoFile').addEventListener('change',e=>handleTicketFile(e.target.files[0]));
 $('cameraFile').addEventListener('change',e=>handleTicketFile(e.target.files[0]));
 $('photoDrop').addEventListener('dragover',e=>{e.preventDefault();$('photoDrop').classList.add('drag')});$('photoDrop').addEventListener('dragleave',()=>$('photoDrop').classList.remove('drag'));$('photoDrop').addEventListener('drop',e=>{e.preventDefault();$('photoDrop').classList.remove('drag');const f=e.dataTransfer.files[0];if(!f||!(f.type.startsWith('image/')||f.type==='application/pdf'||/\.pdf$/i.test(f.name||'')))return;handleTicketFile(f);});
+$('toggleFormat').onclick=()=>{const p=$('formatPanel'),open=p.style.display==='none';p.style.display=open?'block':'none';$('toggleFormat').textContent=open?'Hide ticket format':'Define ticket format';if(open){if(photoDataUrl)setSelectorImage(photoDataUrl);renderDefinitionState();installSelectorEvents();}};
+$('layoutSelect').onchange=e=>selectLayoutById(e.target.value);
+$('saveLayout').onclick=()=>saveAreaLayout().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
+$('deleteLayout').onclick=()=>deleteAreaLayout().catch(e=>$('selectorStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
+$('defineOther').onclick=()=>{defineTarget={kind:'other',key:$('otherItem').value};pendingRect=null;markActiveTarget($('defineOther'));$('selectorStatus').textContent='Drag a box around the selected item on the reference ticket.';$('saveDefinedItem').disabled=true;drawSelector()};
+$('saveDefinedItem').onclick=savePendingDefinition;
+$('zoomIn').onclick=()=>{selectorScale=Math.min(4,selectorScale+.25);applySelectorZoom()};
+$('zoomOut').onclick=()=>{selectorScale=Math.max(1,selectorScale-.25);applySelectorZoom()};
+$('resetZoom').onclick=()=>{selectorScale=1;applySelectorZoom()};
+window.addEventListener('resize',()=>{if($('formatPanel')?.style.display!=='none')resizeSelectorCanvas()});
 $('rotateBtn').onclick=()=>{rotation=(rotation+90)%360;$('preview').style.transform=`rotate(${rotation}deg)`;$('preview').style.margin=rotation%180?'50px 0':'0';};
 $('pdfPrev').onclick=()=>pdfDoc&&pdfPageNumber>1&&renderPdfPageData(pdfPageNumber-1,true);
 $('pdfNext').onclick=()=>pdfDoc&&pdfPageNumber<pdfPageCount&&renderPdfPageData(pdfPageNumber+1,true);
