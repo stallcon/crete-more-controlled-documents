@@ -135,7 +135,7 @@ body.formatOpen{overflow:hidden}
 
   <section class="card" style="margin-top:18px">
     <div class="step">Step 3</div><h2>Review extracted data</h2>
-    <div class="notice">Each defined value is isolated from the original ticket, padded within its own column, enlarged, rendered several ways (contrast, adaptive black/white, negative, and decimal-specific when needed), then OCR results are compared. OCR remains suggestion-only: confirm against the source crop or enter the value manually. Moisture is shown as percent here and exported as a decimal fraction (0.50% → 0.005).</div>
+    <div class="notice">OCR is a first pass. Review the numbers before adding a ticket. Moisture fields are shown as percent here and are written to Excel as decimal fractions (0.50% → 0.005).</div>
     <div id="fields" class="fields" style="margin-top:14px"></div>
     <div class="row" style="margin-top:16px"><button id="queueBtn" disabled>Add reviewed ticket to queue</button><button id="clearBtn" class="secondary">Clear form</button></div>
     <details><summary>OCR text and extraction troubleshooting</summary><textarea id="ocrText" class="ocrText" placeholder="OCR text will appear here. You can correct it and click Re-parse text."></textarea><div class="row" style="margin-top:8px"><button id="reparseBtn" class="secondary">Re-parse text</button></div></details>
@@ -330,7 +330,7 @@ const MATERIALS = {
 let workbookBuffer = null, workbookName = '', workbookMeta = null;
 let photoDataUrl = null, rotation = 0, queue = [], lastDetected = {}, fieldReviewState = {};
 let queueEditIndex = null, queueEditScale = 1;
-let ocrWorker = null, paddleOcr = null, paddleOcrInit = null, paddleOcrUnavailable = false, ticketSourceFile = null;
+let ocrWorker = null, ticketSourceFile = null;
 let pdfJs = null, pdfDoc = null, pdfPageNumber = 1, pdfPageCount = 0, pdfPageResults = new Map();
 let areaLayouts=[],activeLayout={id:null,name:'',regions:[],material_rows:{},anchors:{}},defineTarget=null,pendingRect=null,selectorScale=1;
 let pointerStart=null,pinchStart=null,formatReferenceDataUrl=null;
@@ -671,58 +671,34 @@ function parseAreaValue(key,text){
 async function prepareOcrCrop(dataUrl,variant='gray'){
   const im=new Image();im.src=dataUrl;await im.decode();
   const srcW=im.naturalWidth,srcH=im.naturalHeight;
-  const numeric=variant!=='text';
-  const targetH=variant==='decimal'?300:(variant==='adaptive'||variant==='negative'?240:200);
-  const maxScale=variant==='decimal'?10:8;
-  const scale=Math.min(maxScale,Math.max(2.5,targetH/Math.max(1,srcH)));
-  const border=variant==='decimal'?44:34;
-  let w=Math.max(1,Math.round(srcW*scale)),h=Math.max(1,Math.round(srcH*scale));
-  const maxW=1800;if(w>maxW){const s=maxW/w;w=maxW;h=Math.max(1,Math.round(h*s))}
+  const targetH=variant==='decimal'?220:110;
+  const maxScale=variant==='decimal'?9:5;
+  const scale=Math.min(maxScale,Math.max(2,targetH/Math.max(1,srcH)));
+  const border=variant==='decimal'?36:24,w=Math.max(1,Math.round(srcW*scale)),h=Math.max(1,Math.round(srcH*scale));
   const cv=document.createElement('canvas');cv.width=w+border*2;cv.height=h+border*2;
-  const ctx=cv.getContext('2d',{willReadFrequently:true});
-  ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
-  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.imageSmoothingEnabled=variant!=='decimal';
   ctx.drawImage(im,border,border,w,h);
-
-  const id=ctx.getImageData(0,0,cv.width,cv.height),d=id.data,W=cv.width,H=cv.height;
-  const gray=new Uint8ClampedArray(W*H);
-  for(let i=0,p=0;i<d.length;i+=4,p++)gray[p]=Math.max(0,Math.min(255,.299*d[i]+.587*d[i+1]+.114*d[i+2]));
-
-  if(variant==='adaptive'){
-    const integral=new Float64Array((W+1)*(H+1));
-    for(let y=1;y<=H;y++){
-      let rowSum=0;
-      for(let x=1;x<=W;x++){rowSum+=gray[(y-1)*W+x-1];integral[y*(W+1)+x]=integral[(y-1)*(W+1)+x]+rowSum}
-    }
-    const radius=Math.max(7,Math.round(Math.min(W,H)*.035)),bias=12;
-    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-      const x1=Math.max(0,x-radius),x2=Math.min(W-1,x+radius),y1=Math.max(0,y-radius),y2=Math.min(H-1,y+radius);
-      const A=integral[y1*(W+1)+x1],B=integral[y1*(W+1)+(x2+1)],C=integral[(y2+1)*(W+1)+x1],D=integral[(y2+1)*(W+1)+(x2+1)];
-      const mean=(D-B-C+A)/((x2-x1+1)*(y2-y1+1)),g=gray[y*W+x],v=g<mean-bias?0:255,di=(y*W+x)*4;
-      d[di]=d[di+1]=d[di+2]=v;
-    }
-  }else{
-    for(let p=0;p<gray.length;p++){
-      let g=gray[p],v;
-      if(variant==='negative')v=255-Math.max(0,Math.min(255,(g-128)*1.45+128));
-      else if(variant==='decimal')v=g<214?0:255;
-      else if(variant==='threshold')v=g<180?0:255;
-      else v=Math.max(0,Math.min(255,(g-128)*1.5+128));
-      const i=p*4;d[i]=d[i+1]=d[i+2]=v;
-    }
+  const id=ctx.getImageData(0,0,cv.width,cv.height),d=id.data;
+  for(let i=0;i<d.length;i+=4){
+    let g=.299*d[i]+.587*d[i+1]+.114*d[i+2];
+    if(variant==='threshold')g=g<178?0:255;
+    else if(variant==='decimal')g=g<208?0:255;
+    else g=Math.max(0,Math.min(255,(g-128)*1.55+128));
+    d[i]=d[i+1]=d[i+2]=g;
   }
-
   if(variant==='decimal'){
+    // One-pixel dilation after aggressive upscaling keeps tiny decimal points from vanishing.
     const copy=new Uint8ClampedArray(d);
+    const W=cv.width,H=cv.height;
     for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
-      const i=(y*W+x)*4;if(copy[i]>25)continue;
+      const i=(y*W+x)*4;if(copy[i]>20)continue;
       for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
         const j=((y+dy)*W+(x+dx))*4;d[j]=d[j+1]=d[j+2]=0;
       }
     }
   }
-  ctx.putImageData(id,0,0);
-  return cv.toDataURL('image/png',1);
+  ctx.putImageData(id,0,0);return cv.toDataURL('image/png',1);
 }
 async function configureWorkerForField(worker,key){
   const rule=fieldOcrRule(key),psm=(Tesseract.PSM&&Tesseract.PSM[rule.psm])||'7';
@@ -744,43 +720,39 @@ function scoreOcrAttempt(key,attempt){
   return score;
 }
 async function recognizeDefinedField(worker,key,crop){
-  const rule=fieldOcrRule(key),attempts=[];
-  const variants=rule.kind==='text'?['gray','adaptive','negative']:['gray','adaptive','negative',...(decimalSensitiveField(key)?['decimal']:[])];
-  for(const variant of variants){
-    let psm=(Tesseract.PSM&&Tesseract.PSM[rule.psm])||'7';
-    if(variant==='decimal')psm=(Tesseract.PSM&&Tesseract.PSM.SINGLE_WORD)||'8';
-    await worker.setParameters({
-      tessedit_pageseg_mode:psm,
-      preserve_interword_spaces:rule.kind==='text'?'1':'0',
-      tessedit_char_whitelist:rule.whitelist||'',
-      user_defined_dpi:'300'
-    });
-    const rendered=await prepareOcrCrop(crop,variant);
-    const res=await worker.recognize(rendered),txt=res.data.text||'',parsed=parseAreaValue(key,txt);
-    attempts.push({variant,text:txt,confidence:Number(res.data.confidence||0),parsed});
+  await configureWorkerForField(worker,key);
+  const attempts=[];
+  const gray=await prepareOcrCrop(crop,'gray');
+  const r1=await worker.recognize(gray),p1=parseAreaValue(key,r1.data.text||'');
+  attempts.push({variant:'gray',text:r1.data.text||'',confidence:Number(r1.data.confidence||0),parsed:p1});
+
+  if(decimalSensitiveField(key)){
+    const dec=await prepareOcrCrop(crop,'decimal');
+    const rule=fieldOcrRule(key),wordPsm=(Tesseract.PSM&&Tesseract.PSM.SINGLE_WORD)||'8';
+    await worker.setParameters({tessedit_pageseg_mode:wordPsm,preserve_interword_spaces:'0',tessedit_char_whitelist:rule.whitelist||'0123456789.,-%',user_defined_dpi:'300'});
+    const rd=await worker.recognize(dec),pd=parseAreaValue(key,rd.data.text||'');
+    attempts.push({variant:'decimal',text:rd.data.text||'',confidence:Number(rd.data.confidence||0),parsed:pd});
+    await configureWorkerForField(worker,key);
   }
 
-  // Reward agreement between independent renderings.
-  const signature=a=>a?.parsed?String(a.parsed.value).trim():'';
-  const counts={};for(const a of attempts){const s=signature(a);if(s)counts[s]=(counts[s]||0)+1}
-  for(const a of attempts)a.agreement=signature(a)?counts[signature(a)]||1:0;
-  attempts.sort((a,b)=>{
-    const sa=scoreOcrAttempt(key,a)+(a.agreement>=2?18+(a.agreement-2)*6:0);
-    const sb=scoreOcrAttempt(key,b)+(b.agreement>=2?18+(b.agreement-2)*6:0);
-    return sb-sa;
-  });
+  const minConf=fieldOcrRule(key).kind==='text'?68:78;
+  if(!p1||Number(r1.data.confidence||0)<minConf){
+    const bw=await prepareOcrCrop(crop,'threshold');
+    const r2=await worker.recognize(bw),p2=parseAreaValue(key,r2.data.text||'');
+    attempts.push({variant:'threshold',text:r2.data.text||'',confidence:Number(r2.data.confidence||0),parsed:p2});
+  }
+
+  attempts.sort((a,b)=>scoreOcrAttempt(key,b)-scoreOcrAttempt(key,a));
   const best=attempts[0];
-  if(!best?.parsed)return{
-    value:'',confidence:0,rawText:attempts.map(a=>a.variant+': '+String(a.text||'').trim()).join(' | '),
-    source:'Isolated field OCR · no valid value',reviewRequired:true,ocrAttempts:attempts
-  };
-  const conf=Math.round(best.confidence||0),decimalMissing=decimalSensitiveField(key)&&!best.parsed.decimalSeen;
-  const repaired=best.parsed.repair&&best.parsed.repair.includes('repair'),agreement=best.agreement||1;
-  const reviewRequired=conf<(rule.kind==='text'?62:68)||decimalMissing||repaired||agreement<2;
+  if(!best?.parsed)return{value:'',confidence:0,rawText:attempts.map(a=>a.text).join(' | '),source:'Defined area · no valid value',reviewRequired:true};
+  const conf=Math.round(best.confidence||0);
+  const decimalMissing=decimalSensitiveField(key)&&!best.parsed.decimalSeen;
+  const repaired=best.parsed.repair&&best.parsed.repair.includes('repair');
+  const reviewRequired=conf<(fieldOcrRule(key).kind==='text'?65:72)||decimalMissing||repaired;
   return{
     value:best.parsed.value,confidence:conf,rawText:best.text,
-    source:'Isolated '+best.variant+' render · '+agreement+'/'+attempts.length+' agreement'+(repaired?' · '+best.parsed.repair:''),
-    reviewRequired,decimalSeen:!!best.parsed.decimalSeen,ocrAttempts:attempts
+    source:'Defined area'+(best.variant==='decimal'?' · decimal pass':'')+(repaired?' · '+best.parsed.repair:''),
+    reviewRequired,decimalSeen:!!best.parsed.decimalSeen
   };
 }
 function anchorToken(s){
@@ -830,35 +802,6 @@ function mapAlignedPoint(t,x,y){if(!t)return{x,y};return{x:t.x[0]*x+t.x[1]*y+t.x
 function mapAlignedRect(t,r){
   if(!t)return r;const pts=[mapAlignedPoint(t,r.x1,r.y1),mapAlignedPoint(t,r.x2,r.y1),mapAlignedPoint(t,r.x1,r.y2),mapAlignedPoint(t,r.x2,r.y2)];
   return{x1:Math.max(0,Math.min(...pts.map(p=>p.x))),x2:Math.min(1,Math.max(...pts.map(p=>p.x))),y1:Math.max(0,Math.min(...pts.map(p=>p.y))),y2:Math.min(1,Math.max(...pts.map(p=>p.y)))};
-}
-function materialSlotForField(key){
-  for(const [mat,map] of Object.entries(MATERIAL_FIELD_KEYS)){
-    for(const [slot,k] of Object.entries(map))if(k===key)return{mat,slot};
-  }
-  return null;
-}
-function paddedReferenceRectForField(key,r){
-  const info=materialSlotForField(key);
-  const width=Math.max(.001,r.x2-r.x1),height=Math.max(.001,r.y2-r.y1);
-  let left=Math.max(0,r.x1-width*.12),right=Math.min(1,r.x2+width*.12);
-  let top=Math.max(0,r.y1-height*.35),bottom=Math.min(1,r.y2+height*.35);
-  if(info){
-    const row=activeLayout.material_rows?.[info.mat],cols=row?.columns||{};
-    const siblings=Object.entries(cols).map(([slot,col])=>({slot,...col})).filter(x=>x.x1!=null&&x.x2!=null).sort((a,b)=>a.x1-b.x1);
-    const idx=siblings.findIndex(x=>x.slot===info.slot);
-    if(idx>=0){
-      const cur=siblings[idx],prev=siblings[idx-1],next=siblings[idx+1];
-      const naturalPad=Math.min(width*.18,.012);
-      left=Math.max(0,cur.x1-naturalPad);
-      right=Math.min(1,cur.x2+naturalPad);
-      if(prev)left=Math.max(left,(prev.x2+cur.x1)/2);
-      if(next)right=Math.min(right,(cur.x2+next.x1)/2);
-      // Preserve row isolation as well; do not reach into adjacent material rows.
-      top=Math.max(0,r.y1-Math.min(height*.28,.009));
-      bottom=Math.min(1,r.y2+Math.min(height*.28,.009));
-    }
-  }
-  return{x1:left,x2:right,y1:top,y2:bottom};
 }
 async function buildFullPageOcr(worker,dataUrl){
   const pg=await prepareAlignmentPage(dataUrl);
@@ -915,59 +858,44 @@ async function buildAlignmentTransform(worker,dataUrl,pageOcr=null){
 }
 async function extractWithSavedAreas(dataUrl){
   if(!layoutHasDefinitions())throw Error('No defined areas in selected layout.');
-  const worker=await ensureOcrWorker(),parsed={};let reviewCount=0;
-  let alignment={transform:null,matched:0,total:0,words:[]};
+  const worker=await ensureOcrWorker(),parsed={};let reviewCount=0,total=0;
+  $('photoStatus').textContent='Reading full ticket…';
+  const pageOcr=await buildFullPageOcr(worker,dataUrl);
+  let alignment={transform:null,matched:0,total:0,words:pageOcr.words};
   if(Object.keys(activeLayout.anchors||{}).length){
-    $('photoStatus').textContent='Aligning ticket from full-page anchors…';
-    const pageOcr=await buildFullPageOcr(worker,dataUrl);
-    alignment=await buildAlignmentTransform(worker,dataUrl,pageOcr).catch(e=>{
-      console.warn('Anchor alignment failed',e);
-      return{transform:null,matched:0,total:Object.keys(activeLayout.anchors||{}).length,words:pageOcr.words};
-    });
+    $('photoStatus').textContent='Aligning ticket from anchors…';
+    alignment=await buildAlignmentTransform(worker,dataUrl,pageOcr).catch(e=>{console.warn('Anchor alignment failed',e);return{transform:null,matched:0,total:Object.keys(activeLayout.anchors||{}).length,words:pageOcr.words}});
   }
   const alignNote=alignment.total?(' · anchors '+alignment.matched+'/'+alignment.total):'';
-  const defs=[];
-  for(const r of activeLayout.regions||[])defs.push({key:r.key,referenceRect:r.rect});
+  const recognizeRect=async(key,r)=>{
+    total++;$('photoStatus').textContent='Extracting '+key+' ('+total+')'+alignNote+'…';
+    const mapped=mapAlignedRect(alignment.transform,r);
+    let field=parseFieldFromPageWords(key,pageOcr.words,mapped);
+    const weak=!field||field.value===''||field.confidence<(fieldOcrRule(key).kind==='text'?58:66)||(decimalSensitiveField(key)&&!field.decimalSeen);
+    const forceCategoryCheck=strictColumnField(key);
+    if(weak||forceCategoryCheck){
+      const crop=await cropNormalized(dataUrl,mapped),fallback=await recognizeDefinedField(worker,key,crop);
+      const fallbackValid=fallback&&fallback.value!==''&&fallback.value!=null;
+      if(!field||
+         (isMoistureField(key)&&fallbackValid&&(fallback.decimalSeen||fallback.confidence>=field.confidence-8))||
+         (isWaterField(key)&&fallbackValid&&fallback.confidence>=Math.max(45,field.confidence-10))||
+         (decimalSensitiveField(key)&&fallbackValid&&fallback.decimalSeen&&!field.decimalSeen)||
+         (fallbackValid&&fallback.confidence>=field.confidence+4)) field=fallback;
+      if(field)field.source=(field.source||'Defined area')+(forceCategoryCheck?' · category-verified crop':' · crop fallback');
+    }
+    if(field&&field.value!==''&&field.value!=null){
+      field.rect={...mapped};
+      field.source=(field.source||'Defined area')+alignNote;
+      parsed[key]=field;
+      if(field.reviewRequired||alignment.total&&alignment.matched<2)reviewCount++;
+    }else reviewCount++;
+  };
+  for(const r of activeLayout.regions||[])await recognizeRect(r.key,r.rect);
   for(const [mat,row] of Object.entries(activeLayout.material_rows||{})){
     if(row?.y1==null)continue;const map=MATERIAL_FIELD_KEYS[mat]||{};
-    for(const [slot,col] of Object.entries(row.columns||{})){
-      const key=map[slot];if(!key)continue;
-      defs.push({key,referenceRect:{x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2}});
-    }
+    for(const [slot,col] of Object.entries(row.columns||{})){const key=map[slot];if(!key)continue;await recognizeRect(key,{x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2})}
   }
-
-  const crops=[];
-  for(let i=0;i<defs.length;i++){
-    const d=defs[i];
-    $('photoStatus').textContent='Preparing field '+(i+1)+' of '+defs.length+alignNote+'…';
-    const paddedRef=paddedReferenceRectForField(d.key,d.referenceRect);
-    const mapped=mapAlignedRect(alignment.transform,paddedRef);
-    const crop=await cropNormalized(dataUrl,mapped);
-    crops.push({...d,mapped,crop});
-  }
-
-  const paddleByKey=await recognizePaddleBatch(crops);
-  for(let i=0;i<crops.length;i++){
-    const d=crops[i];
-    $('photoStatus').textContent='Cross-checking field '+(i+1)+' of '+crops.length+alignNote+'…';
-    const tess=await recognizeDefinedField(worker,d.key,d.crop);
-    const paddle=paddleByKey.get(d.key)||null;
-    const field=mergeOcrEngines(d.key,paddle,tess);
-    if(field&&field.value!==''&&field.value!=null){
-      field.rect={...d.mapped};
-      field.source=(field.source||'Hybrid OCR')+alignNote;
-      if(alignment.total&&alignment.matched<2){field.reviewRequired=true;field.autoVerified=false}
-      parsed[d.key]=field;
-      if(field.reviewRequired)reviewCount++;
-    }else reviewCount++;
-  }
-  return{
-    text:'Hybrid PaddleOCR + Tesseract field extraction'+alignNote,
-    parsed,
-    reviewCount,
-    alignment,
-    engine:paddleByKey.size?'hybrid':'tesseract-fallback'
-  };
+  return{text:pageOcr.text||('Area-defined extraction'+alignNote),parsed,reviewCount,alignment};
 }
 
 function updateFieldReviewUI(key){
@@ -1146,7 +1074,7 @@ function parseTicketText(text){
 }
 function applyParsed(parsed){
   clearDetectedHints();fieldReviewState={}; lastDetected=parsed;
-  Object.entries(parsed).forEach(([k,o])=>setField(k,o.value,o.source,o.confidence,o.rawText,o.rect||null,o.autoVerified?'verified':'unverified'));
+  Object.entries(parsed).forEach(([k,o])=>setField(k,o.value,o.source,o.confidence,o.rawText,o.rect||null,'unverified'));
   $('queueBtn').disabled=false;
 }
 
@@ -1200,151 +1128,6 @@ async function ensureOcrWorker(){
   try{await ocrWorker.setParameters({preserve_interword_spaces:'1'});}catch(_e){}
   return ocrWorker;
 }
-async function ensurePaddleOcr(){
-  if(paddleOcrUnavailable)return null;
-  if(paddleOcr)return paddleOcr;
-  if(paddleOcrInit)return paddleOcrInit;
-  paddleOcrInit=(async()=>{
-    try{
-      $('photoStatus').textContent='Loading PaddleOCR recognition engine…';
-      const mod=await import('https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm');
-      const PaddleOCR=mod.PaddleOCR||mod.default?.PaddleOCR||mod.default;
-      if(!PaddleOCR?.create)throw new Error('PaddleOCR module did not expose PaddleOCR.create');
-      paddleOcr=await PaddleOCR.create({
-        lang:'en',
-        ocrVersion:'PP-OCRv5',
-        textDetectionBatchSize:2,
-        textRecognitionBatchSize:8,
-        ortOptions:{
-          backend:'wasm',
-          wasmPaths:'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/',
-          numThreads:1,
-          simd:true
-        }
-      });
-      return paddleOcr;
-    }catch(e){
-      console.warn('PaddleOCR unavailable; using Tesseract fallback only.',e);
-      paddleOcrUnavailable=true;paddleOcr=null;return null;
-    }
-  })();
-  return paddleOcrInit;
-}
-async function imageFromDataUrl(src){
-  const im=new Image();im.src=src;await im.decode();return im;
-}
-function paddleItemPos(item){
-  const pts=Array.isArray(item?.poly)?item.poly:[];
-  const flat=[];
-  for(const p of pts){
-    if(Array.isArray(p)&&p.length>=2)flat.push({x:Number(p[0])||0,y:Number(p[1])||0});
-    else if(p&&typeof p==='object')flat.push({x:Number(p.x)||0,y:Number(p.y)||0});
-  }
-  if(!flat.length)return{x:0,y:0};
-  return{x:Math.min(...flat.map(p=>p.x)),y:Math.min(...flat.map(p=>p.y))};
-}
-function paddleResultForField(key,result){
-  const items=(result?.items||[]).filter(x=>String(x?.text||'').trim());
-  if(!items.length)return null;
-  items.sort((a,b)=>{const pa=paddleItemPos(a),pb=paddleItemPos(b);return Math.abs(pa.y-pb.y)>12?pa.y-pb.y:pa.x-pb.x});
-  const text=items.map(x=>String(x.text||'').trim()).filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
-  const parsed=parseAreaValue(key,text);if(!parsed)return null;
-  let scores=items.map(x=>Number(x.score)).filter(Number.isFinite);
-  let confidence=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:0;
-  if(confidence<=1.01)confidence*=100;
-  confidence=Math.round(Math.max(0,Math.min(100,confidence)));
-  const rule=fieldOcrRule(key),decimalMissing=decimalSensitiveField(key)&&!parsed.decimalSeen;
-  const repaired=parsed.repair&&parsed.repair.includes('repair');
-  return{
-    value:parsed.value,
-    confidence,
-    rawText:text,
-    source:'PaddleOCR PP-OCRv5',
-    reviewRequired:confidence<(rule.kind==='text'?60:66)||decimalMissing||repaired,
-    decimalSeen:!!parsed.decimalSeen,
-    engine:'paddle',
-    parsed
-  };
-}
-async function recognizePaddleBatch(fieldCrops){
-  const out=new Map(),ocr=await ensurePaddleOcr();if(!ocr||!fieldCrops.length)return out;
-  const chunkSize=12;
-  for(let i=0;i<fieldCrops.length;i+=chunkSize){
-    const chunk=fieldCrops.slice(i,i+chunkSize);
-    try{
-      $('photoStatus').textContent='PaddleOCR reading fields '+(i+1)+'–'+Math.min(fieldCrops.length,i+chunk.length)+' of '+fieldCrops.length+'…';
-      const images=await Promise.all(chunk.map(x=>imageFromDataUrl(x.crop)));
-      const results=await ocr.predict(images,{
-        textDetLimitSideLen:1280,
-        textDetThresh:.20,
-        textDetBoxThresh:.28,
-        textDetUnclipRatio:1.6,
-        textRecScoreThresh:.20
-      });
-      chunk.forEach((x,j)=>{const p=paddleResultForField(x.key,results?.[j]);if(p)out.set(x.key,p)});
-    }catch(e){
-      console.warn('PaddleOCR field batch failed; Tesseract will handle this batch.',e);
-    }
-  }
-  return out;
-}
-function normalizedTextValue(v){return String(v??'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().replace(/\s+/g,' ')}
-function enginesAgree(key,a,b){
-  if(!a||!b||a.value===''||b.value==='')return false;
-  const rule=fieldOcrRule(key);
-  if(rule.kind==='text'||rule.kind==='ticket'){
-    const aa=normalizedTextValue(a.value),bb=normalizedTextValue(b.value);
-    if(!aa||!bb)return false;
-    if(aa===bb)return true;
-    return wordSimilarity(aa.replace(/ /g,''),bb.replace(/ /g,''))>=.92;
-  }
-  const av=Number(a.value),bv=Number(b.value);if(!Number.isFinite(av)||!Number.isFinite(bv))return false;
-  let tol=.05;
-  if(key==='wc_ratio_report')tol=.0025;
-  else if(isMoistureField(key))tol=.03;
-  else if(key==='load_size')tol=.05;
-  else if(key==='loaded_weight')tol=2;
-  else if(isWaterField(key))tol=.15;
-  else if(/batched$/.test(key)||['rock_batched','sand_batched','flyash_batched'].includes(key))tol=.75;
-  return Math.abs(av-bv)<=tol;
-}
-function candidateQuality(key,x,engineBonus=0){
-  if(!x||x.value===''||x.value==null)return-1e9;
-  let s=Number(x.confidence||0)+engineBonus;
-  if(!x.reviewRequired)s+=12;
-  if(decimalSensitiveField(key)&&x.decimalSeen)s+=14;
-  if(x.parsed?.repair&&x.parsed.repair.includes('repair'))s-=10;
-  return s;
-}
-function mergeOcrEngines(key,paddle,tess){
-  if(!paddle&&!tess)return null;
-  if(paddle&&tess&&enginesAgree(key,paddle,tess)){
-    const chosen=candidateQuality(key,paddle,4)>=candidateQuality(key,tess)?paddle:tess;
-    const confidence=Math.round(Math.min(100,(Number(paddle.confidence||0)+Number(tess.confidence||0))/2));
-    const autoVerified=confidence>=68&&!paddle.reviewRequired&&!tess.reviewRequired;
-    return{
-      ...chosen,
-      confidence,
-      rawText:'Paddle: '+String(paddle.rawText||'').trim()+' | Tesseract: '+String(tess.rawText||'').trim(),
-      source:'PaddleOCR + Tesseract consensus',
-      reviewRequired:!autoVerified,
-      autoVerified,
-      engine:'consensus'
-    };
-  }
-  if(paddle&&!tess)return{...paddle,reviewRequired:true,autoVerified:false};
-  if(tess&&!paddle)return{...tess,reviewRequired:true,autoVerified:false,engine:'tesseract'};
-  const pScore=candidateQuality(key,paddle,5),tScore=candidateQuality(key,tess,0);
-  const chosen=pScore>=tScore?paddle:tess;
-  return{
-    ...chosen,
-    source:(chosen===paddle?'PaddleOCR preferred':'Tesseract preferred')+' · engines disagree',
-    rawText:'Paddle: '+String(paddle.rawText||'').trim()+' | Tesseract: '+String(tess.rawText||'').trim(),
-    reviewRequired:true,
-    autoVerified:false,
-    engine:chosen===paddle?'paddle':'tesseract'
-  };
-}
 async function recognizeTicketImage(dataUrl){
   if(layoutHasDefinitions()){
     return await extractWithSavedAreas(dataUrl);
@@ -1360,11 +1143,8 @@ function ticketFromParsed(parsed){
   FIELD_DEFS.forEach(d=>{
     const x=parsed[d.key];out[d.key]=x&&x.value!==undefined&&x.value!==null?x.value:'';
     if(x){
-      meta[d.key]={confidence:x.confidence??null,rawText:x.rawText??'',source:x.source??'',reviewRequired:!!x.reviewRequired,rect:x.rect||null,engine:x.engine||'',autoVerified:!!x.autoVerified};
-      if(out[d.key]!==''&&out[d.key]!=null){
-        verification[d.key]=x.autoVerified?'verified':'unverified';
-        if(!x.autoVerified)unverified++;
-      }
+      meta[d.key]={confidence:x.confidence??null,rawText:x.rawText??'',source:x.source??'',reviewRequired:!!x.reviewRequired,rect:x.rect||null};
+      if(out[d.key]!==''&&out[d.key]!=null){verification[d.key]='unverified';unverified++}
       if(x.reviewRequired)review++;
     }
   });
