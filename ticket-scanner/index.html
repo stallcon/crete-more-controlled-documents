@@ -330,7 +330,7 @@ const MATERIALS = {
 let workbookBuffer = null, workbookName = '', workbookMeta = null;
 let photoDataUrl = null, rotation = 0, queue = [], lastDetected = {}, fieldReviewState = {};
 let queueEditIndex = null, queueEditScale = 1;
-let ocrWorker = null, ticketSourceFile = null;
+let ocrWorker = null, paddleOcr = null, paddleOcrInit = null, paddleOcrUnavailable = false, ticketSourceFile = null;
 let pdfJs = null, pdfDoc = null, pdfPageNumber = 1, pdfPageCount = 0, pdfPageResults = new Map();
 let areaLayouts=[],activeLayout={id:null,name:'',regions:[],material_rows:{},anchors:{}},defineTarget=null,pendingRect=null,selectorScale=1;
 let pointerStart=null,pinchStart=null,formatReferenceDataUrl=null;
@@ -915,7 +915,7 @@ async function buildAlignmentTransform(worker,dataUrl,pageOcr=null){
 }
 async function extractWithSavedAreas(dataUrl){
   if(!layoutHasDefinitions())throw Error('No defined areas in selected layout.');
-  const worker=await ensureOcrWorker(),parsed={};let reviewCount=0,total=0;
+  const worker=await ensureOcrWorker(),parsed={};let reviewCount=0;
   let alignment={transform:null,matched:0,total:0,words:[]};
   if(Object.keys(activeLayout.anchors||{}).length){
     $('photoStatus').textContent='Aligning ticket from full-page anchors…';
@@ -926,29 +926,48 @@ async function extractWithSavedAreas(dataUrl){
     });
   }
   const alignNote=alignment.total?(' · anchors '+alignment.matched+'/'+alignment.total):'';
-  const recognizeRect=async(key,referenceRect)=>{
-    total++;$('photoStatus').textContent='Isolating and rendering '+key+' ('+total+')'+alignNote+'…';
-    const paddedRef=paddedReferenceRectForField(key,referenceRect);
-    const mapped=mapAlignedRect(alignment.transform,paddedRef);
-    const crop=await cropNormalized(dataUrl,mapped);
-    const field=await recognizeDefinedField(worker,key,crop);
-    if(field&&field.value!==''&&field.value!=null){
-      field.rect={...mapped};
-      field.source=(field.source||'Isolated field OCR')+alignNote;
-      if(alignment.total&&alignment.matched<2)field.reviewRequired=true;
-      parsed[key]=field;if(field.reviewRequired)reviewCount++;
-    }else reviewCount++;
-  };
-
-  for(const r of activeLayout.regions||[])await recognizeRect(r.key,r.rect);
+  const defs=[];
+  for(const r of activeLayout.regions||[])defs.push({key:r.key,referenceRect:r.rect});
   for(const [mat,row] of Object.entries(activeLayout.material_rows||{})){
     if(row?.y1==null)continue;const map=MATERIAL_FIELD_KEYS[mat]||{};
     for(const [slot,col] of Object.entries(row.columns||{})){
       const key=map[slot];if(!key)continue;
-      await recognizeRect(key,{x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2});
+      defs.push({key,referenceRect:{x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2}});
     }
   }
-  return{text:'Isolated high-resolution field extraction'+alignNote,parsed,reviewCount,alignment};
+
+  const crops=[];
+  for(let i=0;i<defs.length;i++){
+    const d=defs[i];
+    $('photoStatus').textContent='Preparing field '+(i+1)+' of '+defs.length+alignNote+'…';
+    const paddedRef=paddedReferenceRectForField(d.key,d.referenceRect);
+    const mapped=mapAlignedRect(alignment.transform,paddedRef);
+    const crop=await cropNormalized(dataUrl,mapped);
+    crops.push({...d,mapped,crop});
+  }
+
+  const paddleByKey=await recognizePaddleBatch(crops);
+  for(let i=0;i<crops.length;i++){
+    const d=crops[i];
+    $('photoStatus').textContent='Cross-checking field '+(i+1)+' of '+crops.length+alignNote+'…';
+    const tess=await recognizeDefinedField(worker,d.key,d.crop);
+    const paddle=paddleByKey.get(d.key)||null;
+    const field=mergeOcrEngines(d.key,paddle,tess);
+    if(field&&field.value!==''&&field.value!=null){
+      field.rect={...d.mapped};
+      field.source=(field.source||'Hybrid OCR')+alignNote;
+      if(alignment.total&&alignment.matched<2){field.reviewRequired=true;field.autoVerified=false}
+      parsed[d.key]=field;
+      if(field.reviewRequired)reviewCount++;
+    }else reviewCount++;
+  }
+  return{
+    text:'Hybrid PaddleOCR + Tesseract field extraction'+alignNote,
+    parsed,
+    reviewCount,
+    alignment,
+    engine:paddleByKey.size?'hybrid':'tesseract-fallback'
+  };
 }
 
 function updateFieldReviewUI(key){
@@ -1127,7 +1146,7 @@ function parseTicketText(text){
 }
 function applyParsed(parsed){
   clearDetectedHints();fieldReviewState={}; lastDetected=parsed;
-  Object.entries(parsed).forEach(([k,o])=>setField(k,o.value,o.source,o.confidence,o.rawText,o.rect||null,'unverified'));
+  Object.entries(parsed).forEach(([k,o])=>setField(k,o.value,o.source,o.confidence,o.rawText,o.rect||null,o.autoVerified?'verified':'unverified'));
   $('queueBtn').disabled=false;
 }
 
@@ -1181,6 +1200,151 @@ async function ensureOcrWorker(){
   try{await ocrWorker.setParameters({preserve_interword_spaces:'1'});}catch(_e){}
   return ocrWorker;
 }
+async function ensurePaddleOcr(){
+  if(paddleOcrUnavailable)return null;
+  if(paddleOcr)return paddleOcr;
+  if(paddleOcrInit)return paddleOcrInit;
+  paddleOcrInit=(async()=>{
+    try{
+      $('photoStatus').textContent='Loading PaddleOCR recognition engine…';
+      const mod=await import('https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm');
+      const PaddleOCR=mod.PaddleOCR||mod.default?.PaddleOCR||mod.default;
+      if(!PaddleOCR?.create)throw new Error('PaddleOCR module did not expose PaddleOCR.create');
+      paddleOcr=await PaddleOCR.create({
+        lang:'en',
+        ocrVersion:'PP-OCRv5',
+        textDetectionBatchSize:2,
+        textRecognitionBatchSize:8,
+        ortOptions:{
+          backend:'wasm',
+          wasmPaths:'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/',
+          numThreads:1,
+          simd:true
+        }
+      });
+      return paddleOcr;
+    }catch(e){
+      console.warn('PaddleOCR unavailable; using Tesseract fallback only.',e);
+      paddleOcrUnavailable=true;paddleOcr=null;return null;
+    }
+  })();
+  return paddleOcrInit;
+}
+async function imageFromDataUrl(src){
+  const im=new Image();im.src=src;await im.decode();return im;
+}
+function paddleItemPos(item){
+  const pts=Array.isArray(item?.poly)?item.poly:[];
+  const flat=[];
+  for(const p of pts){
+    if(Array.isArray(p)&&p.length>=2)flat.push({x:Number(p[0])||0,y:Number(p[1])||0});
+    else if(p&&typeof p==='object')flat.push({x:Number(p.x)||0,y:Number(p.y)||0});
+  }
+  if(!flat.length)return{x:0,y:0};
+  return{x:Math.min(...flat.map(p=>p.x)),y:Math.min(...flat.map(p=>p.y))};
+}
+function paddleResultForField(key,result){
+  const items=(result?.items||[]).filter(x=>String(x?.text||'').trim());
+  if(!items.length)return null;
+  items.sort((a,b)=>{const pa=paddleItemPos(a),pb=paddleItemPos(b);return Math.abs(pa.y-pb.y)>12?pa.y-pb.y:pa.x-pb.x});
+  const text=items.map(x=>String(x.text||'').trim()).filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+  const parsed=parseAreaValue(key,text);if(!parsed)return null;
+  let scores=items.map(x=>Number(x.score)).filter(Number.isFinite);
+  let confidence=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:0;
+  if(confidence<=1.01)confidence*=100;
+  confidence=Math.round(Math.max(0,Math.min(100,confidence)));
+  const rule=fieldOcrRule(key),decimalMissing=decimalSensitiveField(key)&&!parsed.decimalSeen;
+  const repaired=parsed.repair&&parsed.repair.includes('repair');
+  return{
+    value:parsed.value,
+    confidence,
+    rawText:text,
+    source:'PaddleOCR PP-OCRv5',
+    reviewRequired:confidence<(rule.kind==='text'?60:66)||decimalMissing||repaired,
+    decimalSeen:!!parsed.decimalSeen,
+    engine:'paddle',
+    parsed
+  };
+}
+async function recognizePaddleBatch(fieldCrops){
+  const out=new Map(),ocr=await ensurePaddleOcr();if(!ocr||!fieldCrops.length)return out;
+  const chunkSize=12;
+  for(let i=0;i<fieldCrops.length;i+=chunkSize){
+    const chunk=fieldCrops.slice(i,i+chunkSize);
+    try{
+      $('photoStatus').textContent='PaddleOCR reading fields '+(i+1)+'–'+Math.min(fieldCrops.length,i+chunk.length)+' of '+fieldCrops.length+'…';
+      const images=await Promise.all(chunk.map(x=>imageFromDataUrl(x.crop)));
+      const results=await ocr.predict(images,{
+        textDetLimitSideLen:1280,
+        textDetThresh:.20,
+        textDetBoxThresh:.28,
+        textDetUnclipRatio:1.6,
+        textRecScoreThresh:.20
+      });
+      chunk.forEach((x,j)=>{const p=paddleResultForField(x.key,results?.[j]);if(p)out.set(x.key,p)});
+    }catch(e){
+      console.warn('PaddleOCR field batch failed; Tesseract will handle this batch.',e);
+    }
+  }
+  return out;
+}
+function normalizedTextValue(v){return String(v??'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().replace(/\s+/g,' ')}
+function enginesAgree(key,a,b){
+  if(!a||!b||a.value===''||b.value==='')return false;
+  const rule=fieldOcrRule(key);
+  if(rule.kind==='text'||rule.kind==='ticket'){
+    const aa=normalizedTextValue(a.value),bb=normalizedTextValue(b.value);
+    if(!aa||!bb)return false;
+    if(aa===bb)return true;
+    return wordSimilarity(aa.replace(/ /g,''),bb.replace(/ /g,''))>=.92;
+  }
+  const av=Number(a.value),bv=Number(b.value);if(!Number.isFinite(av)||!Number.isFinite(bv))return false;
+  let tol=.05;
+  if(key==='wc_ratio_report')tol=.0025;
+  else if(isMoistureField(key))tol=.03;
+  else if(key==='load_size')tol=.05;
+  else if(key==='loaded_weight')tol=2;
+  else if(isWaterField(key))tol=.15;
+  else if(/batched$/.test(key)||['rock_batched','sand_batched','flyash_batched'].includes(key))tol=.75;
+  return Math.abs(av-bv)<=tol;
+}
+function candidateQuality(key,x,engineBonus=0){
+  if(!x||x.value===''||x.value==null)return-1e9;
+  let s=Number(x.confidence||0)+engineBonus;
+  if(!x.reviewRequired)s+=12;
+  if(decimalSensitiveField(key)&&x.decimalSeen)s+=14;
+  if(x.parsed?.repair&&x.parsed.repair.includes('repair'))s-=10;
+  return s;
+}
+function mergeOcrEngines(key,paddle,tess){
+  if(!paddle&&!tess)return null;
+  if(paddle&&tess&&enginesAgree(key,paddle,tess)){
+    const chosen=candidateQuality(key,paddle,4)>=candidateQuality(key,tess)?paddle:tess;
+    const confidence=Math.round(Math.min(100,(Number(paddle.confidence||0)+Number(tess.confidence||0))/2));
+    const autoVerified=confidence>=68&&!paddle.reviewRequired&&!tess.reviewRequired;
+    return{
+      ...chosen,
+      confidence,
+      rawText:'Paddle: '+String(paddle.rawText||'').trim()+' | Tesseract: '+String(tess.rawText||'').trim(),
+      source:'PaddleOCR + Tesseract consensus',
+      reviewRequired:!autoVerified,
+      autoVerified,
+      engine:'consensus'
+    };
+  }
+  if(paddle&&!tess)return{...paddle,reviewRequired:true,autoVerified:false};
+  if(tess&&!paddle)return{...tess,reviewRequired:true,autoVerified:false,engine:'tesseract'};
+  const pScore=candidateQuality(key,paddle,5),tScore=candidateQuality(key,tess,0);
+  const chosen=pScore>=tScore?paddle:tess;
+  return{
+    ...chosen,
+    source:(chosen===paddle?'PaddleOCR preferred':'Tesseract preferred')+' · engines disagree',
+    rawText:'Paddle: '+String(paddle.rawText||'').trim()+' | Tesseract: '+String(tess.rawText||'').trim(),
+    reviewRequired:true,
+    autoVerified:false,
+    engine:chosen===paddle?'paddle':'tesseract'
+  };
+}
 async function recognizeTicketImage(dataUrl){
   if(layoutHasDefinitions()){
     return await extractWithSavedAreas(dataUrl);
@@ -1196,8 +1360,11 @@ function ticketFromParsed(parsed){
   FIELD_DEFS.forEach(d=>{
     const x=parsed[d.key];out[d.key]=x&&x.value!==undefined&&x.value!==null?x.value:'';
     if(x){
-      meta[d.key]={confidence:x.confidence??null,rawText:x.rawText??'',source:x.source??'',reviewRequired:!!x.reviewRequired,rect:x.rect||null};
-      if(out[d.key]!==''&&out[d.key]!=null){verification[d.key]='unverified';unverified++}
+      meta[d.key]={confidence:x.confidence??null,rawText:x.rawText??'',source:x.source??'',reviewRequired:!!x.reviewRequired,rect:x.rect||null,engine:x.engine||'',autoVerified:!!x.autoVerified};
+      if(out[d.key]!==''&&out[d.key]!=null){
+        verification[d.key]=x.autoVerified?'verified':'unverified';
+        if(!x.autoVerified)unverified++;
+      }
       if(x.reviewRequired)review++;
     }
   });
