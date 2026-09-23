@@ -134,6 +134,26 @@ body.formatOpen{overflow:hidden}
   </div>
 
   <section class="card" style="margin-top:18px">
+    <div class="step">Mix reference</div><h2>Mix Submittal Reference</h2>
+    <div class="notice">Save the design quantity for <b>one cubic yard</b> of each mix. The extractor will use the ticket Mix Code and delivered volume to calculate the expected batch quantity and use it as a reference when evaluating OCR results.</div>
+    <div class="row" style="margin-top:12px">
+      <select id="submittalSelect" style="min-width:220px;padding:9px;border:1px solid var(--line);border-radius:7px"><option value="">New submittal…</option></select>
+      <input id="submittalMixCode" placeholder="Mix Code" style="min-width:150px;padding:9px;border:1px solid var(--line);border-radius:7px">
+      <input id="submittalName" placeholder="Submittal / mix name" style="min-width:220px;flex:1;padding:9px;border:1px solid var(--line);border-radius:7px">
+      <button id="saveSubmittal">Save submittal</button>
+      <button id="newSubmittal" class="secondary">New</button>
+      <button id="deleteSubmittal" class="danger">Delete</button>
+    </div>
+    <div class="tableWrap" style="max-height:520px;margin-top:12px">
+      <table>
+        <thead><tr><th>Material</th><th>SG</th><th>Weight / yd³</th></tr></thead>
+        <tbody id="submittalRows"></tbody>
+      </table>
+    </div>
+    <div id="submittalStatus" class="status">Save a submittal by Mix Code to use it as an extraction reference.</div>
+  </section>
+
+  <section class="card" style="margin-top:18px">
     <div class="step">Step 3</div><h2>Review extracted data</h2>
     <div class="notice">Each defined value is isolated from the original ticket, padded within its own column, enlarged, rendered several ways (contrast, adaptive black/white, negative, and decimal-specific when needed), then OCR results are compared. OCR remains suggestion-only: confirm against the source crop or enter the value manually. Moisture is shown as percent here and exported as a decimal fraction (0.50% → 0.005).</div>
     <div id="fields" class="fields" style="margin-top:14px"></div>
@@ -147,7 +167,7 @@ body.formatOpen{overflow:hidden}
     <div class="notice" style="margin-top:12px">Each export uses a clean copy of your saved <b>Ticket Importer.xlsx</b> template. The <b>Tickets</b> sheet keeps row 1 headers, removes all prior ticket rows, writes only this queue starting at row 2, downloads the workbook, then clears the queue.</div>
     <div class="row" style="margin-top:14px"><button id="exportBtn" disabled>Export Ticket Importer.xlsx</button><button id="clearQueueBtn" class="danger" disabled>Clear queue</button></div>
     <div id="exportStatus" class="status"></div>
-    <div class="footerNote">Export target: the workbook's <b>Tickets</b> sheet (A:BJ). Moisture values are exported as decimal fractions (for example, 0.50% is written as 0.00500). The export is made self-contained: external workbook references are converted to internal sheet references where possible, external-link packages are removed, and Excel is forced to recalculate using only data and formulas inside the downloaded workbook.</div>
+    <div class="footerNote">Export target: the workbook's <b>Tickets</b> sheet. Submittal SG and Weight/yd³ reference columns are appended automatically to the right of the existing ticket columns. Moisture values are exported as decimal fractions (for example, 0.50% is written as 0.00500). The export is made self-contained: external workbook references are converted to internal sheet references where possible, external-link packages are removed, and Excel is forced to recalculate using only data and formulas inside the downloaded workbook.</div>
   </section>
 </main>
 
@@ -196,7 +216,7 @@ async function validateLogin(){
 function showExtractor(){
   document.getElementById('loginGate').style.display='none';
   document.getElementById('signedInBar').hidden=false;
-  document.getElementById('signedInAs').textContent=sbUser?.email||'Signed in';loadAreaLayouts();
+  document.getElementById('signedInAs').textContent=sbUser?.email||'Signed in';loadAreaLayouts();loadTicketSubmittals();
 }
 async function startLogin(){
   const msg=document.getElementById('loginMsg'); msg.textContent='Signing in…';
@@ -299,6 +319,11 @@ const FIELD_DEFS = [
   {key:'admix5_water', label:'Admix #5 Water', type:'number'},
   {key:'mix_code', label:'Mix Code', type:'text'}
 ];
+const SUBMITTAL_MATERIAL_ROWS=[
+  ['coarse','Coarse Aggregate'],['fine','Fine Aggregate'],['cement','Cement'],['scm1','SCM #1'],['water','Water'],
+  ['wr','Water Reducer'],['air','Air Entrainment'],['agg3','Aggregate #3'],['agg4','Aggregate #4'],
+  ['scm2','SCM #2'],['scm3','SCM #3'],['admix3','Admix #3'],['admix4','Admix #4'],['admix5','Admix #5']
+];
 const TICKET_HEADERS = ["Ticket #","Volume delivered","Coarse aggregate Name","Coarse aggregate Batched Qty","Coarse aggregate Moisture","Coarse aggregate Water","Fine Aggregate Name","Fine Aggregate Batched Qty","Fine Aggregate Moisture","Fine Aggregate Water","Cement Name","Cement Batched Qty","Cement Moisture","Cement Water","SCM #1 Name","SCM #1 Batched Qty","SCM #1 Moisture","SCM #1 Water","Water Name","Water Batched Qty","Water Moisture","Water Water","Total Water","Water Reducer Name","Water Reducer Batched Qty","Water Reducer Moisture","Water Reducer Water","Air Entrainment Name","Air Entrainment Batched Qty","Air Entrainment Moisture","Air Entrainment Water","Water/Cement Ratio","Loaded Weight","Aggregate #3 Name","Aggregate #3 Batched Qty","Aggregate #3 Moisture","Aggregate #3 Water","Aggregate #4 Name","Aggregate #4 Batched Qty","Aggregate #4 Moisture","Aggregate #4 Water","SCM #2 Name","SCM #2 Batched Qty","SCM #2 Moisture","SCM #2 Water","SCM #3 Name","SCM #3 Batched Qty","SCM #3 Moisture","SCM #3 Water","Admix #3 Name","Admix #3 Batched Qty","Admix #3 Moisture","Admix #3 Water","Admix #4 Name","Admix #4 Batched Qty","Admix #4 Moisture","Admix #4 Water","Admix #5 Name","Admix #5 Batched Qty","Admix #5 Moisture","Admix #5 Water","Mix Code"];
 const EXPORT_MAP = {
   "Ticket #":['ticket','text'],"Volume delivered":['load_size','number'],
@@ -319,6 +344,12 @@ const EXPORT_MAP = {
   "Admix #5 Name":['admix5_name','text'],"Admix #5 Batched Qty":['admix5','number'],"Admix #5 Moisture":['admix5_moisture','moisture'],"Admix #5 Water":['admix5_water','number'],
   "Mix Code":['mix_code','text']
 }
+for(const [key,label] of SUBMITTAL_MATERIAL_ROWS){
+  const sgHeader=label+' SG',weightHeader=label+' Weight / yd³';
+  TICKET_HEADERS.push(sgHeader,weightHeader);
+  EXPORT_MAP[sgHeader]=['submittal_'+key+'_sg','number'];
+  EXPORT_MAP[weightHeader]=['submittal_'+key+'_weight','number'];
+}
 const MATERIALS = {
   rock: {aliases:['rock','stone','coarse aggregate','coarse agg','agg 1','aggregate 1','gravel']},
   sand: {aliases:['sand','fine aggregate','fine agg','agg 2','aggregate 2']},
@@ -333,14 +364,11 @@ let queueEditIndex = null, queueEditScale = 1;
 let ocrWorker = null, paddleOcr = null, paddleOcrInit = null, paddleOcrDisabled = false, ticketSourceFile = null;
 let pdfJs = null, pdfDoc = null, pdfPageNumber = 1, pdfPageCount = 0, pdfPageResults = new Map();
 let areaLayouts=[],activeLayout={id:null,name:'',regions:[],material_rows:{},anchors:{}},defineTarget=null,pendingRect=null,selectorScale=1;
+let ticketSubmittals=[],activeSubmittalId=null;
 let pointerStart=null,pinchStart=null,formatReferenceDataUrl=null;
 
 const $ = id => document.getElementById(id);
-const MATERIAL_DEF_ROWS=[
-  ['coarse','Coarse Aggregate'],['fine','Fine Aggregate'],['cement','Cement'],['scm1','SCM #1'],['water','Water'],
-  ['wr','Water Reducer'],['air','Air Entrainment'],['agg3','Aggregate #3'],['agg4','Aggregate #4'],
-  ['scm2','SCM #2'],['scm3','SCM #3'],['admix3','Admix #3'],['admix4','Admix #4'],['admix5','Admix #5']
-];
+const MATERIAL_DEF_ROWS=SUBMITTAL_MATERIAL_ROWS;
 const MATERIAL_FIELD_KEYS={
   coarse:{name:'coarse_name',batched:'rock_batched',moisture:'rock_moisture',water:'coarse_water'},
   fine:{name:'fine_name',batched:'sand_batched',moisture:'sand_moisture',water:'fine_water'},
@@ -361,6 +389,118 @@ async function sbRest(path,opt={}){
   const r=await fetch(SB_URL+path,{...opt,headers:{apikey:SB_KEY,authorization:'Bearer '+sbToken,...(opt.headers||{})}});
   const tx=await r.text(),d=tx?JSON.parse(tx):null;if(!r.ok)throw Error(d?.message||d?.error||'Supabase request failed');return d;
 }
+function normalizedMixCode(v){return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'')}
+function emptySubmittalMaterials(){
+  const out={};for(const [key] of SUBMITTAL_MATERIAL_ROWS)out[key]={sg:'',weight:''};return out;
+}
+function renderSubmittalRows(materials={}){
+  const b=$('submittalRows');if(!b)return;b.innerHTML='';
+  for(const [key,label] of SUBMITTAL_MATERIAL_ROWS){
+    const m=materials?.[key]||{},tr=document.createElement('tr');
+    tr.innerHTML='<td><b>'+esc(label)+'</b></td>'+
+      '<td><input id="sub_sg_'+key+'" type="number" step="0.001" min="0" value="'+esc(m.sg??'')+'" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px"></td>'+
+      '<td><input id="sub_wt_'+key+'" type="number" step="0.01" value="'+esc(m.weight??'')+'" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px"></td>';
+    b.appendChild(tr);
+  }
+}
+function readSubmittalMaterials(){
+  const out={};
+  for(const [key] of SUBMITTAL_MATERIAL_ROWS){
+    const sg=$('sub_sg_'+key)?.value.trim()||'',wt=$('sub_wt_'+key)?.value.trim()||'';
+    out[key]={sg:sg===''?'':Number(sg),weight:wt===''?'':Number(wt)};
+  }
+  return out;
+}
+function renderSubmittalSelect(){
+  const s=$('submittalSelect');if(!s)return;
+  s.innerHTML='<option value="">New submittal…</option>'+ticketSubmittals.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.mix_code)+(x.name?' · '+esc(x.name):'')+'</option>').join('');
+  s.value=activeSubmittalId||'';
+}
+function clearSubmittalForm(){
+  activeSubmittalId=null;$('submittalSelect').value='';$('submittalMixCode').value='';$('submittalName').value='';renderSubmittalRows(emptySubmittalMaterials());
+  $('submittalStatus').textContent='Enter the design SG and weight per cubic yard, then save by Mix Code.';
+}
+function selectTicketSubmittal(id){
+  const s=ticketSubmittals.find(x=>x.id===id);activeSubmittalId=s?.id||null;
+  if(!s){clearSubmittalForm();return}
+  $('submittalMixCode').value=s.mix_code||'';$('submittalName').value=s.name||'';renderSubmittalRows(s.materials||{});
+  $('submittalSelect').value=s.id;$('submittalStatus').innerHTML='<span class="ok">Reference loaded for Mix '+escapeHtml(s.mix_code)+'.</span>';
+}
+async function loadTicketSubmittals(){
+  if(!sbToken||!sbUser)return;
+  try{
+    ticketSubmittals=await sbRest('/rest/v1/cm_ticket_submittals?select=id,mix_code,name,materials,updated_at&order=mix_code.asc');
+    renderSubmittalSelect();
+    if(activeSubmittalId&&ticketSubmittals.some(x=>x.id===activeSubmittalId))selectTicketSubmittal(activeSubmittalId);
+    else if(!$('submittalRows')?.children.length)renderSubmittalRows(emptySubmittalMaterials());
+  }catch(e){console.warn(e);if($('submittalStatus'))$('submittalStatus').innerHTML='<span class="error">Could not load submittals: '+escapeHtml(e.message||String(e))+'</span>'}
+}
+async function saveTicketSubmittal(){
+  if(!sbUser)throw Error('Sign in required.');
+  const mixCode=$('submittalMixCode').value.trim();if(!mixCode)throw Error('Enter a Mix Code.');
+  const payload={user_id:sbUser.id,mix_code:mixCode,name:$('submittalName').value.trim(),materials:readSubmittalMaterials(),updated_at:new Date().toISOString()};
+  let rows;
+  if(activeSubmittalId){
+    rows=await sbRest('/rest/v1/cm_ticket_submittals?id=eq.'+encodeURIComponent(activeSubmittalId),{method:'PATCH',headers:{'content-type':'application/json',prefer:'return=representation'},body:JSON.stringify(payload)});
+  }else{
+    rows=await sbRest('/rest/v1/cm_ticket_submittals?on_conflict=user_id,mix_code',{method:'POST',headers:{'content-type':'application/json',prefer:'resolution=merge-duplicates,return=representation'},body:JSON.stringify(payload)});
+  }
+  activeSubmittalId=rows?.[0]?.id||activeSubmittalId;await loadTicketSubmittals();
+  if(activeSubmittalId)selectTicketSubmittal(activeSubmittalId);
+  $('submittalStatus').innerHTML='<span class="ok">Submittal saved. Ticket extraction can now use Mix '+escapeHtml(mixCode)+' as a design reference.</span>';
+}
+async function deleteTicketSubmittal(){
+  if(!activeSubmittalId)return;if(!confirm('Delete this saved mix submittal?'))return;
+  await sbRest('/rest/v1/cm_ticket_submittals?id=eq.'+encodeURIComponent(activeSubmittalId),{method:'DELETE'});
+  activeSubmittalId=null;await loadTicketSubmittals();clearSubmittalForm();
+}
+function findTicketSubmittal(mixCode){
+  const n=normalizedMixCode(mixCode);if(!n)return null;
+  return ticketSubmittals.find(x=>normalizedMixCode(x.mix_code)===n)||null;
+}
+function applySubmittalSnapshot(ticket){
+  const s=findTicketSubmittal(ticket?.mix_code);
+  ticket._submittalId=s?.id||null;ticket._submittalName=s?.name||'';ticket._submittalMixCode=s?.mix_code||'';
+  for(const [key] of SUBMITTAL_MATERIAL_ROWS){
+    const m=s?.materials?.[key]||{};
+    ticket['submittal_'+key+'_sg']=m.sg??'';
+    ticket['submittal_'+key+'_weight']=m.weight??'';
+  }
+  return ticket;
+}
+function expectedBatchFromSubmittal(key,mixCode,volume){
+  const info=materialSlotForField(key);if(!info||info.slot!=='batched')return null;
+  const s=findTicketSubmittal(mixCode),w=Number(s?.materials?.[info.mat]?.weight),v=Number(volume);
+  if(!s||!Number.isFinite(w)||!Number.isFinite(v)||w===0||v<=0)return null;
+  return{submittal:s,material:info.mat,perYard:w,total:w*v};
+}
+function applySubmittalGuidance(parsed){
+  const mixCode=parsed.mix_code?.value,volume=parsed.load_size?.value,s=findTicketSubmittal(mixCode);
+  if(!s||!Number.isFinite(Number(volume))||Number(volume)<=0)return null;
+  for(const [mat] of SUBMITTAL_MATERIAL_ROWS){
+    const key=MATERIAL_FIELD_KEYS[mat]?.batched,perYard=Number(s.materials?.[mat]?.weight);
+    if(!key||!Number.isFinite(perYard)||perYard===0)continue;
+    const field=parsed[key];if(!field)continue;
+    const expected=perYard*Number(volume),candidates=[];
+    const add=(value,confidence,source,parsedMeta)=>{const n=Number(value);if(Number.isFinite(n)&&!candidates.some(x=>x.value===n))candidates.push({value:n,confidence:Number(confidence||0),source,parsedMeta})};
+    add(field.value,field.confidence,'current',null);
+    for(const a of field.ocrAttempts||[])if(a?.parsed)add(a.parsed.value,a.confidence,a.variant,a.parsed);
+    if(!candidates.length)continue;
+    candidates.sort((a,b)=>Math.abs(a.value-expected)-Math.abs(b.value-expected));
+    const best=candidates[0],current=Number(field.value),bestErr=Math.abs(best.value-expected)/Math.max(Math.abs(expected),1),curErr=Math.abs(current-expected)/Math.max(Math.abs(expected),1);
+    if(bestErr<=.25&&bestErr+.04<curErr){
+      field.value=best.value;field.confidence=Math.max(field.confidence||0,best.confidence||0);
+      field.source='Submittal-guided OCR · '+perYard+' / yd³ × '+volume+' yd³ = '+Number(expected.toFixed(2))+' expected';
+      field.reviewRequired=bestErr>.15;field.autoVerified=false;
+    }
+    const finalErr=Math.abs(Number(field.value)-expected)/Math.max(Math.abs(expected),1);
+    field.submittalExpected=expected;field.submittalPerYard=perYard;field.submittalVariancePct=finalErr*100;
+    if(finalErr>.30){field.reviewRequired=true;field.autoVerified=false;field.source=(field.source||'OCR')+' · '+(finalErr*100).toFixed(1)+'% from submittal reference'}
+    else if(finalErr<=.15){field.source=(field.source||'OCR')+' · submittal reference within '+(finalErr*100).toFixed(1)+'%'}
+  }
+  return s;
+}
+
 function emptyLayout(){return{id:null,name:'',regions:[],material_rows:{},anchors:{}}}
 async function loadAreaLayouts(){
   if(!sbToken||!sbUser)return;
@@ -949,9 +1089,11 @@ async function extractWithSavedAreas(dataUrl){
       await recognizeRect(key,{x1:col.x1,x2:col.x2,y1:row.y1,y2:row.y2});
     }
   }
+  const matchedSubmittal=applySubmittalGuidance(parsed);
+  reviewCount=Object.values(parsed).filter(x=>x?.reviewRequired).length;
   return{
-    text:'High-resolution field extraction'+(paddleOcrDisabled?' · stable engine only':' · enhanced worker cross-check enabled')+alignNote,
-    parsed,reviewCount,alignment
+    text:'High-resolution field extraction'+(paddleOcrDisabled?' · stable engine only':' · enhanced worker cross-check enabled')+alignNote+(matchedSubmittal?' · submittal '+matchedSubmittal.mix_code:''),
+    parsed,reviewCount,alignment,submittal:matchedSubmittal||null
   };
 }
 
@@ -1340,6 +1482,7 @@ async function reextractQueuedTicketsWithActiveLayout(){
       try{
         const result=await extractWithSavedAreas(src.dataUrl);
         const fresh=ticketFromParsed(result.parsed);
+        applySubmittalSnapshot(fresh);
         const oldVerification=old._verification||{};
         for(const d of FIELD_DEFS){
           const state=oldVerification[d.key];
@@ -1477,6 +1620,7 @@ async function saveQueuedTicketEdit(){
       if(updated._fieldMeta[d.key])updated._fieldMeta[d.key]={...updated._fieldMeta[d.key],source:'Manual queue edit · cleared',reviewRequired:false};
     }
   }
+  applySubmittalSnapshot(updated);
   updated._unverifiedCount=0;updated._reviewRequired=0;updated._manuallyEditedAt=new Date().toISOString();updated._manuallyVerified=true;updated._manuallyVerifiedAt=new Date().toISOString();
   queue[index]=updated;persistQueue();renderQueue();closeQueueEditor();
   $('exportStatus').innerHTML='<span class="ok">Ticket '+escapeHtml(updated.ticket||String(index+1))+' saved as manually verified.</span>';
@@ -1503,6 +1647,7 @@ async function extractAllPdfPages(){
       const result=await recognizeTicketImage(img);
       pdfPageResults.set(p,result);
       const t=ticketFromParsed(result.parsed);
+      applySubmittalSnapshot(t);
       await attachSourceToTicket(t,img,{kind:'pdf_page',page:p,fileName:ticketSourceFile?.name||''});
       if(layoutHasDefinitions()){t._layoutId=activeLayout.id||null;t._layoutName=activeLayout.name||'';t._extractionMode='defined_layout';t._extractedAt=new Date().toISOString()}
       queue.push(t);added++;persistQueue();renderQueue();
@@ -1555,6 +1700,7 @@ async function addQueue(){
     if(x||st){t._fieldMeta[d.key]={confidence:x?.confidence??st?.confidence??null,rawText:x?.rawText??st?.rawText??'',source:x?.source??st?.source??'',reviewRequired:!!x?.reviewRequired,rect:x?.rect||st?.rect||null};if(x?.reviewRequired)rc++}
   }
   t._unverifiedCount=0;t._reviewRequired=rc
+  applySubmittalSnapshot(t);
   await attachSourceToTicket(t,photoDataUrl,{kind:pdfDoc?'pdf_page':'image',page:pdfDoc?pdfPageNumber:null,fileName:ticketSourceFile?.name||''});
   if(layoutHasDefinitions()){t._layoutId=activeLayout.id||null;t._layoutName=activeLayout.name||'';t._extractionMode='defined_layout';t._extractedAt=new Date().toISOString()}
   queue.push(t); persistQueue(); renderQueue(); clearForm(); $('ocrText').value='';
@@ -1594,6 +1740,10 @@ function xmlString(doc){return new XMLSerializer().serializeToString(doc);}
 function columnLetters(n){let s='';while(n>0){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26)}return s}
 function getRow(doc,n){for(const r of doc.getElementsByTagName('row'))if(Number(r.getAttribute('r'))===n)return r;return null;}
 function getCell(row,col){if(!row)return null;for(const x of row.getElementsByTagName('c')){const m=(x.getAttribute('r')||'').match(/[A-Z]+/i);if(m&&m[0].toUpperCase()===col)return x}return null}
+function ensureCell(doc,row,col,rowNum){
+  let c=getCell(row,col);if(c)return c;
+  c=doc.createElementNS(row.namespaceURI,'c');c.setAttribute('r',col+rowNum);row.appendChild(c);return c;
+}
 function clearCellChildren(c){while(c.firstChild)c.removeChild(c.firstChild);c.removeAttribute('t');}
 function setCellValue(doc,c,value,type){
   clearCellChildren(c); if(value===undefined||value===null||value==='')return;
@@ -1683,6 +1833,7 @@ async function exportWorkbook(){
       return;
     }
   }
+  queue.forEach(applySubmittalSnapshot);persistQueue();
   $('exportBtn').disabled=true;$('exportStatus').textContent='Building Ticket Importer workbook…';
   try{
     const zip=await JSZip.loadAsync(workbookBuffer.slice(0));
@@ -1692,7 +1843,14 @@ async function exportWorkbook(){
     const shDoc=parseXML(await zip.file(sheetPath).async('string')),data=shDoc.getElementsByTagName('sheetData')[0];
     if(!data)throw new Error('Tickets worksheet has no sheetData.');
     const headerRow=getRow(shDoc,1),styleRow=getRow(shDoc,2);
-    const styleByCol={};for(let i=1;i<=TICKET_HEADERS.length;i++){const col=columnLetters(i),cell=getCell(styleRow,col);if(cell)styleByCol[col]=cell.getAttribute('s')||''}
+    if(!headerRow)throw new Error('Tickets worksheet is missing header row 1.');
+    const numericStyle=getCell(styleRow,'B')?.getAttribute('s')||'',headerStyle=getCell(headerRow,'A')?.getAttribute('s')||'';
+    const styleByCol={};
+    for(let i=1;i<=TICKET_HEADERS.length;i++){
+      const col=columnLetters(i),cell=getCell(styleRow,col);
+      styleByCol[col]=cell?.getAttribute('s')||numericStyle;
+      const hc=ensureCell(shDoc,headerRow,col,1);if(headerStyle&&!hc.hasAttribute('s'))hc.setAttribute('s',headerStyle);setCellValue(shDoc,hc,TICKET_HEADERS[i-1],'text');
+    }
     for(const row of Array.from(data.getElementsByTagName('row')))if(Number(row.getAttribute('r'))>=2)data.removeChild(row);
     queue.forEach((ticket,idx)=>{
       const rn=idx+2,row=shDoc.createElementNS(data.namespaceURI,'row');row.setAttribute('r',String(rn));data.appendChild(row);
@@ -1701,7 +1859,7 @@ async function exportWorkbook(){
         const col=columnLetters(i+1),cell=shDoc.createElementNS(data.namespaceURI,'c');cell.setAttribute('r',col+rn);if(styleByCol[col])cell.setAttribute('s',styleByCol[col]);setCellValue(shDoc,cell,val,type);row.appendChild(cell);
       });
     });
-    const dims=shDoc.getElementsByTagName('dimension');if(dims.length)dims[0].setAttribute('ref','A1:BJ'+Math.max(1,queue.length+1));
+    const dims=shDoc.getElementsByTagName('dimension'),lastCol=columnLetters(TICKET_HEADERS.length);if(dims.length)dims[0].setAttribute('ref','A1:'+lastCol+Math.max(1,queue.length+1));
     zip.file(sheetPath,xmlString(shDoc));
     $('exportStatus').textContent='Making workbook self-contained and recalculating internal formulas…';
     await makeWorkbookSelfContained(zip,wbDoc,relDoc);
@@ -1758,12 +1916,16 @@ $('pdfNext').onclick=()=>pdfDoc&&pdfPageNumber<pdfPageCount&&renderPdfPageData(p
 $('pdfExtractAll').onclick=extractAllPdfPages;
 $('extractBtn').onclick=runOCR;$('reparseBtn').onclick=()=>applyParsed(parseTicketText($('ocrText').value));$('queueBtn').onclick=addQueue;$('clearBtn').onclick=()=>clearForm();$('clearQueueBtn').onclick=async()=>{if(confirm('Clear all queued tickets?')){const old=[...queue];queue=[];persistQueue();renderQueue();await clearQueueSources(old)}};$('exportBtn').onclick=exportWorkbook;
 $('queueEditClose').onclick=closeQueueEditor;$('queueEditCancel').onclick=closeQueueEditor;$('queueEditSave').onclick=saveQueuedTicketEdit;
+$('submittalSelect').onchange=e=>selectTicketSubmittal(e.target.value);
+$('saveSubmittal').onclick=()=>saveTicketSubmittal().catch(e=>$('submittalStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
+$('newSubmittal').onclick=clearSubmittalForm;
+$('deleteSubmittal').onclick=()=>deleteTicketSubmittal().catch(e=>$('submittalStatus').innerHTML='<span class="error">'+escapeHtml(e.message||String(e))+'</span>');
 $('queueEditZoomIn').onclick=()=>{queueEditScale=Math.min(4,queueEditScale+.25);applyQueueEditZoom()};
 $('queueEditZoomOut').onclick=()=>{queueEditScale=Math.max(.5,queueEditScale-.25);applyQueueEditZoom()};
 $('queueEditZoomReset').onclick=()=>{queueEditScale=1;applyQueueEditZoom()};
 $('queueEditModal').addEventListener('click',e=>{if(e.target===$('queueEditModal'))closeQueueEditor()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('queueEditModal').style.display==='block')closeQueueEditor()});
-restoreQueue();renderFields();clearForm();$('queueBtn').disabled=false;renderQueue();restoreWorkbookTemplate();
+restoreQueue();renderFields();renderSubmittalRows(emptySubmittalMaterials());clearForm();$('queueBtn').disabled=false;renderQueue();restoreWorkbookTemplate();
 </script>
 </body>
 </html>
