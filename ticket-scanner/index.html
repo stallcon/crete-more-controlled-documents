@@ -1517,7 +1517,17 @@ function renderQueue(){
   b.querySelectorAll('[data-layout]').forEach(x=>x.onclick=()=>defineLayoutFromQueued(Number(x.dataset.layout)));
   b.querySelectorAll('[data-edit]').forEach(x=>x.onclick=()=>editQueuedTicket(Number(x.dataset.edit)));
   b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=async()=>{const i=Number(x.dataset.rm),t=queue[i];queue.splice(i,1);persistQueue();renderQueue();await deleteQueueSource(t?._sourceId).catch(()=>{})});
-  $('clearQueueBtn').disabled=!queue.length;const hasUnverified=queue.some(t=>(t._unverifiedCount||0)>0);$('exportBtn').disabled=!(queue.length&&workbookBuffer&&!hasUnverified);if(hasUnverified)$('exportStatus').innerHTML='<span class="warning">Export locked: review queued tickets with unverified OCR values first.</span>';
+  $('clearQueueBtn').disabled=!queue.length;
+  const hasUnverified=queue.some(t=>(t._unverifiedCount||0)>0);
+  $('exportBtn').disabled=!(queue.length&&workbookBuffer);
+  if(!workbookBuffer&&queue.length){
+    $('exportStatus').innerHTML='<span class="warning">Select or restore the Ticket Importer.xlsx template before exporting.</span>';
+  }else if(hasUnverified){
+    const n=queue.filter(t=>(t._unverifiedCount||0)>0).length;
+    $('exportStatus').innerHTML='<span class="warning">'+n+' queued ticket(s) contain unverified OCR values. Export is available, but review them first when possible.</span>';
+  }else if(queue.length){
+    $('exportStatus').innerHTML='<span class="ok">Queue is ready to export.</span>';
+  }
 }
 
 function normalizeZipTarget(target){target=target.replace(/\\/g,'/');if(target.startsWith('/'))return target.slice(1);if(target.startsWith('xl/'))return target;return 'xl/'+target.replace(/^\.\//,'');}
@@ -1599,9 +1609,22 @@ function base64ToBuffer(s){const bin=atob(s),a=new Uint8Array(bin.length);for(le
 function saveWorkbookTemplate(buffer,name){try{localStorage.setItem('cm_ticket_importer_template',bufferToBase64(buffer));localStorage.setItem('cm_ticket_importer_name',name||'Ticket Importer.xlsx')}catch(e){console.warn('Could not persist workbook template',e)}}
 async function restoreWorkbookTemplate(){try{const s=localStorage.getItem('cm_ticket_importer_template');if(!s)return false;workbookBuffer=base64ToBuffer(s);workbookName=localStorage.getItem('cm_ticket_importer_name')||'Ticket Importer.xlsx';workbookMeta=await inspectWorkbook(workbookBuffer.slice(0));$('workbookStatus').innerHTML='<span class="ok">Saved template ready: '+escapeHtml(workbookName)+' · exports replace only the Tickets sheet rows.</span>';renderQueue();return true}catch(e){console.warn(e);return false}}
 async function exportWorkbook(){
-  if(!workbookBuffer||!queue.length)return;
+  if(!queue.length){
+    $('exportStatus').innerHTML='<span class="warning">There are no queued tickets to export.</span>';
+    return;
+  }
+  if(!workbookBuffer){
+    $('exportStatus').innerHTML='<span class="error">No Ticket Importer.xlsx template is loaded. Select the workbook template in Step 1, then export again.</span>';
+    return;
+  }
   const unverifiedTickets=queue.filter(t=>(t._unverifiedCount||0)>0);
-  if(unverifiedTickets.length){$('exportStatus').innerHTML='<span class="error">Export blocked: '+unverifiedTickets.length+' queued ticket(s) still contain unverified OCR values. Edit and confirm/correct them first.</span>';return}
+  if(unverifiedTickets.length){
+    const proceed=confirm(unverifiedTickets.length+' queued ticket(s) still contain unverified OCR values.\n\nExport them to Excel anyway?');
+    if(!proceed){
+      $('exportStatus').innerHTML='<span class="warning">Export canceled. Use View / Edit on queued tickets to correct values, or export again when ready.</span>';
+      return;
+    }
+  }
   $('exportBtn').disabled=true;$('exportStatus').textContent='Building Ticket Importer workbook…';
   try{
     const zip=await JSZip.loadAsync(workbookBuffer.slice(0));
