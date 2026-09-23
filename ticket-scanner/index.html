@@ -16,9 +16,9 @@
     .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.status{font-size:13px;color:var(--muted);margin-top:10px}.ok{color:var(--good)}.warning{color:var(--warn)}.error{color:var(--bad)}
     #previewWrap{display:none;margin-top:12px}.preview{max-width:100%;max-height:430px;border-radius:8px;border:1px solid var(--line);background:#111}
     progress{width:100%;height:14px;margin-top:10px}.ocrText{width:100%;min-height:180px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap}
-    .fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.field{border:1px solid transparent;border-radius:9px;padding:6px}.field.reviewNeeded{border-color:#e7b35f;background:#fffaf0}.field.verifiedField{border-color:#b9dec9;background:#f7fcf9}.field.manualField{border-color:#b8c7d6;background:#f8fbfd}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}.field input,.field textarea,.field select{width:100%;border:1px solid var(--line);border-radius:7px;padding:9px;background:white;color:var(--ink)}.field textarea{min-height:62px;resize:vertical}.field .hint{font-size:10px;color:#7b8793;margin-top:3px;min-height:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sourceCrop{display:none;width:100%;height:58px;object-fit:contain;background:#111;border:1px solid var(--line);border-radius:6px;margin-top:6px}.verifyBar{display:flex;align-items:center;gap:6px;margin-top:6px}.verifyBar button{padding:5px 8px;font-size:10px}.verifyState{font-size:10px;font-weight:700}.verifyState.unverified{color:var(--warn)}.verifyState.verified{color:var(--good)}.verifyState.manual{color:#3f5f7d}
+    .fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.field{border:1px solid transparent;border-radius:9px;padding:6px}.field.reviewNeeded{border-color:#e7b35f;background:#fff7df;box-shadow:0 0 0 1px rgba(165,92,0,.08)}.field.lowConfidenceField{border-color:#dc6b5b;background:#fff0ee;box-shadow:0 0 0 2px rgba(180,35,24,.08)}.field.verifiedField{border-color:#b9dec9;background:#f7fcf9}.field.manualField{border-color:#b8c7d6;background:#f8fbfd}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}.field input,.field textarea,.field select{width:100%;border:1px solid var(--line);border-radius:7px;padding:9px;background:white;color:var(--ink)}.field textarea{min-height:62px;resize:vertical}.field .hint{font-size:10px;color:#7b8793;margin-top:3px;min-height:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sourceCrop{display:none;width:100%;height:58px;object-fit:contain;background:#111;border:1px solid var(--line);border-radius:6px;margin-top:6px}.verifyBar{display:flex;align-items:center;gap:6px;margin-top:6px}.verifyBar button{padding:5px 8px;font-size:10px}.verifyState{font-size:10px;font-weight:700}.verifyState.unverified{color:var(--warn)}.verifyState.verified{color:var(--good)}.verifyState.manual{color:#3f5f7d}
     .wide{grid-column:span 2}.full{grid-column:1/-1}.badge{display:inline-block;padding:2px 6px;border-radius:999px;background:var(--soft);font-size:10px;margin-left:5px}.detected{background:#e8f5ee;color:var(--good)}
-    table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}th{background:#f7f9fb;position:sticky;top:0}.tableWrap{overflow:auto;max-height:360px;border:1px solid var(--line);border-radius:8px}
+    table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}th{background:#f7f9fb;position:sticky;top:0}.tableWrap{overflow:auto;max-height:360px;border:1px solid var(--line);border-radius:8px}.queueNeedsReview td{background:#fff9e8}.queueLowConfidence td{background:#fff0ee}.queueManualVerified td{background:#f6fcf8}.queueWarnValue{display:inline-block;background:#fff0ee;border:1px solid #e39a91;color:#8a251c;border-radius:4px;padding:1px 3px}.queueUnverifiedValue{display:inline-block;background:#fff7df;border:1px solid #e2bf75;color:#76520a;border-radius:4px;padding:1px 3px}.ticketVerifyBox{display:flex;align-items:center;gap:6px;white-space:nowrap}.ticketVerifyBox input{width:16px;height:16px}.ticketVerifyBox label{font-size:11px;font-weight:700}.queueEditField.reviewNeeded{background:#fff7df;border:1px solid #e2bf75;border-radius:8px;padding:7px}.queueEditField.lowConfidence{background:#fff0ee;border:1px solid #dc6b5b;border-radius:8px;padding:7px}.queueEditField .fieldReviewFlag{font-size:10px;font-weight:700;margin-top:4px}.fieldReviewFlag.warning{color:var(--warn)}.fieldReviewFlag.error{color:var(--bad)}
     details{margin-top:12px}summary{cursor:pointer;font-weight:700;color:#4a5662}.advanced{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px}.advanced label{font-size:12px;color:var(--muted)}.advanced input,.advanced select{width:100%;margin-top:4px;padding:8px;border:1px solid var(--line);border-radius:7px}
     .notice{padding:10px 12px;border-radius:8px;background:#fff8e6;border:1px solid #ead59d;font-size:12px;color:#654b0c}.footerNote{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.45}
     .queueEditModal{position:fixed;inset:0;z-index:10050;background:rgba(12,17,23,.82);display:none;padding:18px}.queueEditShell{width:min(1500px,100%);height:calc(100vh - 36px);margin:auto;background:#fff;border-radius:12px;overflow:hidden;display:grid;grid-template-rows:auto 1fr;box-shadow:0 20px 60px rgba(0,0,0,.35)}.queueEditHeader{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:#f7f9fb}.queueEditBody{display:grid;grid-template-columns:minmax(420px,1.05fr) minmax(520px,.95fr);min-height:0}.queueTicketPane{background:#222;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:18px}.queueTicketPane img{display:block;max-width:100%;height:auto;transform-origin:top center}.queueEditFormPane{overflow:auto;padding:16px}.queueEditFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.queueEditField label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}.queueEditField input,.queueEditField textarea{width:100%;border:1px solid var(--line);border-radius:7px;padding:9px;background:#fff}.queueEditField textarea{min-height:62px}.queueEditActions{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 0 2px;margin-top:14px;display:flex;gap:10px;justify-content:flex-end}.manualEditNotice{background:#eef5ff;border:1px solid #c8d9ee;color:#304d6d;padding:9px 11px;border-radius:8px;font-size:12px;margin-bottom:12px}@media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}.advanced{grid-template-columns:repeat(2,1fr)}.queueEditBody{grid-template-columns:1fr;grid-template-rows:minmax(280px,45vh) 1fr}.queueEditFields{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.fields,.advanced,.queueEditFields{grid-template-columns:1fr}.wide{grid-column:auto}.queueEditModal{padding:0}.queueEditShell{height:100vh;border-radius:0}}
@@ -143,7 +143,7 @@ body.formatOpen{overflow:hidden}
 
   <section class="card" style="margin-top:18px">
     <div class="step">Step 4</div><h2>Ticket queue and Excel export</h2><div class="selectorHelp" style="margin-bottom:10px">Use <b>Define Layout</b> on any queued ticket to reopen its original image/PDF page in the large format selector. Once a layout is saved, every queued ticket is automatically re-extracted from its original source using that layout.</div><div id="layoutApplyStatus" class="status"></div>
-    <div class="tableWrap"><table><thead><tr><th>#</th><th>Ticket</th><th>Volume</th><th>Coarse</th><th>Fine</th><th>Cement</th><th>SCM #1</th><th>Water</th><th>W/C</th><th>Mix</th><th></th></tr></thead><tbody id="queueBody"><tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr></tbody></table></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>Ticket</th><th>Volume</th><th>Coarse</th><th>Fine</th><th>Cement</th><th>SCM #1</th><th>Water</th><th>W/C</th><th>Mix</th><th>Verified</th><th></th></tr></thead><tbody id="queueBody"><tr><td colspan="12" style="color:var(--muted)">No tickets queued.</td></tr></tbody></table></div>
     <div class="notice" style="margin-top:12px">Each export uses a clean copy of your saved <b>Ticket Importer.xlsx</b> template. The <b>Tickets</b> sheet keeps row 1 headers, removes all prior ticket rows, writes only this queue starting at row 2, downloads the workbook, then clears the queue.</div>
     <div class="row" style="margin-top:14px"><button id="exportBtn" disabled>Export Ticket Importer.xlsx</button><button id="clearQueueBtn" class="danger" disabled>Clear queue</button></div>
     <div id="exportStatus" class="status"></div>
@@ -959,7 +959,7 @@ function updateFieldReviewUI(key){
   const state=fieldReviewState[key]?.status||'';
   const wrap=$('wrap_'+key),badge=$('state_'+key),btn=$('verify_'+key),input=$('f_'+key);
   if(!wrap||!badge||!btn||!input)return;
-  wrap.classList.remove('reviewNeeded','verifiedField','manualField');
+  wrap.classList.remove('reviewNeeded','lowConfidenceField','verifiedField','manualField');
   badge.className='verifyState';
   if(!input.value.trim()){badge.textContent='';btn.disabled=true;btn.style.display='none';return}
   btn.style.display='inline-block';
@@ -968,7 +968,8 @@ function updateFieldReviewUI(key){
   }else if(state==='manual'){
     badge.textContent='Manual value';badge.classList.add('manual');wrap.classList.add('manualField');btn.textContent='Confirm';btn.disabled=false;
   }else{
-    badge.textContent='Unverified OCR';badge.classList.add('unverified');wrap.classList.add('reviewNeeded');btn.textContent='Confirm';btn.disabled=false;
+    const st=fieldReviewState[key]||{},low=(st.confidence!=null&&Number(st.confidence)<72)||st.reviewRequired===true;
+    badge.textContent=low?'LOW CONFIDENCE / REVIEW':'Unverified OCR';badge.classList.add('unverified');wrap.classList.add(low?'lowConfidenceField':'reviewNeeded');btn.textContent='Confirm';btn.disabled=false;
   }
 }
 function setReviewStatus(key,status){
@@ -1009,7 +1010,7 @@ function setField(key,value,source='',confidence=null,rawText='',rect=null,statu
   const el=$('f_'+key); if(!el || value===undefined || value===null || value==='') return;
   if(isMoistureField(key)&&Number.isFinite(Number(value)))el.value=Number(value).toFixed(2);
   else el.value=String(value).replace(/,/g,'');
-  fieldReviewState[key]={status,rect:rect||null,confidence,rawText,source};
+  fieldReviewState[key]={status,rect:rect||null,confidence,rawText,source,reviewRequired:lastDetected?.[key]?.reviewRequired===true};
   const h=$('h_'+key);
   if(h){
     const conf=confidence==null?'':(' · '+Math.round(Number(conf))+'%');
@@ -1367,10 +1368,50 @@ async function reextractQueuedTicketsWithActiveLayout(){
     return {updated,skipped,failed};
   }finally{if(btn)btn.disabled=false}
 }
+function populatedTicketKeys(t){
+  return FIELD_DEFS.filter(d=>t?.[d.key]!==''&&t?.[d.key]!==null&&t?.[d.key]!==undefined).map(d=>d.key);
+}
+function ticketLowConfidenceKeys(t){
+  return populatedTicketKeys(t).filter(key=>{
+    const m=t?._fieldMeta?.[key];
+    return !!m&&(m.reviewRequired===true||(m.confidence!=null&&Number(m.confidence)<72));
+  });
+}
+function ticketUnverifiedKeys(t){
+  if(t?._manuallyVerified)return[];
+  return populatedTicketKeys(t).filter(key=>t?._verification?.[key]==='unverified');
+}
+function ticketNeedsReview(t){
+  return !t?._manuallyVerified&&(ticketUnverifiedKeys(t).length>0||ticketLowConfidenceKeys(t).length>0);
+}
+function ticketHasLowConfidence(t){
+  return !t?._manuallyVerified&&ticketLowConfidenceKeys(t).length>0;
+}
+function queueFieldMarkup(t,key,value,suffix=''){
+  const v=esc(value),m=t?._fieldMeta?.[key],unverified=!t?._manuallyVerified&&t?._verification?.[key]==='unverified';
+  const low=!t?._manuallyVerified&&m&&(m.reviewRequired===true||(m.confidence!=null&&Number(m.confidence)<72));
+  if(low)return'<span class="queueWarnValue" title="Low confidence / review required">'+v+suffix+'</span>';
+  if(unverified)return'<span class="queueUnverifiedValue" title="Unverified OCR">'+v+suffix+'</span>';
+  return v+suffix;
+}
+function setTicketManualVerified(index,checked){
+  const t=queue[index];if(!t)return;
+  t._manuallyVerified=!!checked;
+  if(checked)t._manuallyVerifiedAt=new Date().toISOString();
+  else delete t._manuallyVerifiedAt;
+  persistQueue();renderQueue();
+  $('exportStatus').innerHTML=checked
+    ?'<span class="ok">Ticket '+escapeHtml(t.ticket||String(index+1))+' marked manually verified.</span>'
+    :'<span class="warning">Manual verification removed from ticket '+escapeHtml(t.ticket||String(index+1))+'. Review flags are visible again.</span>';
+}
 function renderQueueEditFields(ticket){
   const box=$('queueEditFields');box.innerHTML='';
   for(const d of FIELD_DEFS){
-    const wrap=document.createElement('div');wrap.className='queueEditField'+(d.key==='issues'?' full':'');
+    const meta=ticket?._fieldMeta?.[d.key],verification=ticket?._verification?.[d.key];
+    const low=meta&&(meta.reviewRequired===true||(meta.confidence!=null&&Number(meta.confidence)<72));
+    const unverified=verification==='unverified'&&!ticket?._manuallyVerified;
+    const wrap=document.createElement('div');
+    wrap.className='queueEditField'+(d.key==='issues'?' full':'')+(low?' lowConfidence':unverified?' reviewNeeded':'');
     const label=document.createElement('label');label.textContent=d.label;
     const input=d.key==='issues'?document.createElement('textarea'):document.createElement('input');
     input.id='qe_'+d.key;input.dataset.key=d.key;input.autocomplete='off';
@@ -1378,7 +1419,14 @@ function renderQueueEditFields(ticket){
     let v=ticket?.[d.key]??'';
     if(isMoistureField(d.key)&&v!==''&&Number.isFinite(Number(v)))v=Number(v).toFixed(2);
     input.value=v;
-    wrap.append(label,input);box.appendChild(wrap);
+    wrap.append(label,input);
+    if(low||unverified){
+      const flag=document.createElement('div');flag.className='fieldReviewFlag '+(low?'error':'warning');
+      const conf=meta?.confidence!=null?' · '+Math.round(Number(meta.confidence))+'% confidence':'';
+      flag.textContent=(low?'LOW CONFIDENCE / REVIEW':'UNVERIFIED OCR')+conf;
+      wrap.appendChild(flag);
+    }
+    box.appendChild(wrap);
   }
 }
 function applyQueueEditZoom(){
@@ -1429,7 +1477,7 @@ async function saveQueuedTicketEdit(){
       if(updated._fieldMeta[d.key])updated._fieldMeta[d.key]={...updated._fieldMeta[d.key],source:'Manual queue edit · cleared',reviewRequired:false};
     }
   }
-  updated._unverifiedCount=0;updated._reviewRequired=0;updated._manuallyEditedAt=new Date().toISOString();
+  updated._unverifiedCount=0;updated._reviewRequired=0;updated._manuallyEditedAt=new Date().toISOString();updated._manuallyVerified=true;updated._manuallyVerifiedAt=new Date().toISOString();
   queue[index]=updated;persistQueue();renderQueue();closeQueueEditor();
   $('exportStatus').innerHTML='<span class="ok">Ticket '+escapeHtml(updated.ticket||String(index+1))+' saved as manually verified.</span>';
 }
@@ -1512,24 +1560,34 @@ async function addQueue(){
   queue.push(t); persistQueue(); renderQueue(); clearForm(); $('ocrText').value='';
 }
 function renderQueue(){
-  const b=$('queueBody'); b.innerHTML=''; if(!queue.length){b.innerHTML='<tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr>';}
-  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><strong>${esc(t.ticket)}</strong><div class="selectorHelp">${t._extractionMode==='defined_layout'?'Defined layout'+(t._layoutName?' · '+esc(t._layoutName):''):'Generic OCR'}${t._unverifiedCount?' · '+t._unverifiedCount+' UNVERIFIED':''}${t._reviewRequired?' · '+t._reviewRequired+' OCR warning(s)':''}</div></td><td>${esc(t.load_size)}</td><td>${esc(t.coarse_name)} · ${esc(t.rock_batched)} · ${esc(t.rock_moisture)}%</td><td>${esc(t.fine_name)} · ${esc(t.sand_batched)} · ${esc(t.sand_moisture)}%</td><td>${esc(t.cement_name)} · ${esc(t.cement_batched)}</td><td>${esc(t.scm1_name)} · ${esc(t.flyash_batched)}</td><td>${esc(t.water_batched)}</td><td>${esc(t.wc_ratio_report)}</td><td>${esc(t.mix_code)}</td><td><button class="secondary" data-layout="${i}" style="padding:6px 8px">Define Layout</button> <button class="secondary" data-edit="${i}" style="padding:6px 8px">View / Edit</button> <button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
+  const b=$('queueBody'); b.innerHTML=''; if(!queue.length){b.innerHTML='<tr><td colspan="12" style="color:var(--muted)">No tickets queued.</td></tr>';}
+  queue.forEach((t,i)=>{
+    const unverified=ticketUnverifiedKeys(t),low=ticketLowConfidenceKeys(t),needs=ticketNeedsReview(t);
+    const tr=document.createElement('tr');
+    tr.className=t._manuallyVerified?'queueManualVerified':ticketHasLowConfidence(t)?'queueLowConfidence':needs?'queueNeedsReview':'';
+    const verificationCell=t._manuallyVerified
+      ?'<div class="ticketVerifyBox"><input type="checkbox" data-manual-verify="'+i+'" checked><label>Manually verified</label></div>'
+      :needs
+        ?'<div class="ticketVerifyBox"><input type="checkbox" data-manual-verify="'+i+'"><label>Manually verified</label></div><div class="selectorHelp">'+(low.length?low.length+' low confidence':'')+(low.length&&unverified.length?' · ':'')+(unverified.length?unverified.length+' unverified':'')+'</div>'
+        :'<div class="ticketVerifyBox"><input type="checkbox" disabled><label class="ok">Auto accepted</label></div>';
+    tr.innerHTML=`<td>${i+1}</td><td><strong>${esc(t.ticket)}</strong><div class="selectorHelp">${t._extractionMode==='defined_layout'?'Defined layout'+(t._layoutName?' · '+esc(t._layoutName):''):'Generic OCR'}${needs?' · REVIEW REQUIRED':''}${t._manuallyVerified?' · MANUALLY VERIFIED':''}</div></td><td>${queueFieldMarkup(t,'load_size',t.load_size)}</td><td>${queueFieldMarkup(t,'coarse_name',t.coarse_name)} · ${queueFieldMarkup(t,'rock_batched',t.rock_batched)} · ${queueFieldMarkup(t,'rock_moisture',t.rock_moisture,'%')}</td><td>${queueFieldMarkup(t,'fine_name',t.fine_name)} · ${queueFieldMarkup(t,'sand_batched',t.sand_batched)} · ${queueFieldMarkup(t,'sand_moisture',t.sand_moisture,'%')}</td><td>${queueFieldMarkup(t,'cement_name',t.cement_name)} · ${queueFieldMarkup(t,'cement_batched',t.cement_batched)}</td><td>${queueFieldMarkup(t,'scm1_name',t.scm1_name)} · ${queueFieldMarkup(t,'flyash_batched',t.flyash_batched)}</td><td>${queueFieldMarkup(t,'water_batched',t.water_batched)}</td><td>${queueFieldMarkup(t,'wc_ratio_report',t.wc_ratio_report)}</td><td>${queueFieldMarkup(t,'mix_code',t.mix_code)}</td><td>${verificationCell}</td><td><button class="secondary" data-layout="${i}" style="padding:6px 8px">Define Layout</button> <button class="secondary" data-edit="${i}" style="padding:6px 8px">View / Edit</button> <button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;
+    b.appendChild(tr);
+  });
   b.querySelectorAll('[data-layout]').forEach(x=>x.onclick=()=>defineLayoutFromQueued(Number(x.dataset.layout)));
   b.querySelectorAll('[data-edit]').forEach(x=>x.onclick=()=>editQueuedTicket(Number(x.dataset.edit)));
+  b.querySelectorAll('[data-manual-verify]').forEach(x=>x.onchange=()=>setTicketManualVerified(Number(x.dataset.manualVerify),x.checked));
   b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=async()=>{const i=Number(x.dataset.rm),t=queue[i];queue.splice(i,1);persistQueue();renderQueue();await deleteQueueSource(t?._sourceId).catch(()=>{})});
   $('clearQueueBtn').disabled=!queue.length;
-  const hasUnverified=queue.some(t=>(t._unverifiedCount||0)>0);
+  const reviewTickets=queue.filter(ticketNeedsReview);
   $('exportBtn').disabled=!(queue.length&&workbookBuffer);
   if(!workbookBuffer&&queue.length){
     $('exportStatus').innerHTML='<span class="warning">Select or restore the Ticket Importer.xlsx template before exporting.</span>';
-  }else if(hasUnverified){
-    const n=queue.filter(t=>(t._unverifiedCount||0)>0).length;
-    $('exportStatus').innerHTML='<span class="warning">'+n+' queued ticket(s) contain unverified OCR values. Export is available, but review them first when possible.</span>';
+  }else if(reviewTickets.length){
+    $('exportStatus').innerHTML='<span class="warning">'+reviewTickets.length+' queued ticket(s) still need review. Export remains available; check Manually verified after reviewing each ticket.</span>';
   }else if(queue.length){
-    $('exportStatus').innerHTML='<span class="ok">Queue is ready to export.</span>';
+    $('exportStatus').innerHTML='<span class="ok">Queue is verified and ready to export.</span>';
   }
 }
-
 function normalizeZipTarget(target){target=target.replace(/\\/g,'/');if(target.startsWith('/'))return target.slice(1);if(target.startsWith('xl/'))return target;return 'xl/'+target.replace(/^\.\//,'');}
 function parseXML(s){return new DOMParser().parseFromString(s,'application/xml');}
 function xmlString(doc){return new XMLSerializer().serializeToString(doc);}
@@ -1617,9 +1675,9 @@ async function exportWorkbook(){
     $('exportStatus').innerHTML='<span class="error">No Ticket Importer.xlsx template is loaded. Select the workbook template in Step 1, then export again.</span>';
     return;
   }
-  const unverifiedTickets=queue.filter(t=>(t._unverifiedCount||0)>0);
+  const unverifiedTickets=queue.filter(ticketNeedsReview);
   if(unverifiedTickets.length){
-    const proceed=confirm(unverifiedTickets.length+' queued ticket(s) still contain unverified OCR values.\n\nExport them to Excel anyway?');
+    const proceed=confirm(unverifiedTickets.length+' queued ticket(s) still contain low-confidence or unverified values.\n\nExport them to Excel anyway?');
     if(!proceed){
       $('exportStatus').innerHTML='<span class="warning">Export canceled. Use View / Edit on queued tickets to correct values, or export again when ready.</span>';
       return;
