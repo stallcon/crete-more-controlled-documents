@@ -21,7 +21,7 @@
     table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}th{background:#f7f9fb;position:sticky;top:0}.tableWrap{overflow:auto;max-height:360px;border:1px solid var(--line);border-radius:8px}
     details{margin-top:12px}summary{cursor:pointer;font-weight:700;color:#4a5662}.advanced{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px}.advanced label{font-size:12px;color:var(--muted)}.advanced input,.advanced select{width:100%;margin-top:4px;padding:8px;border:1px solid var(--line);border-radius:7px}
     .notice{padding:10px 12px;border-radius:8px;background:#fff8e6;border:1px solid #ead59d;font-size:12px;color:#654b0c}.footerNote{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.45}
-    @media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}.advanced{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.fields,.advanced{grid-template-columns:1fr}.wide{grid-column:auto}}
+    .queueEditModal{position:fixed;inset:0;z-index:10050;background:rgba(12,17,23,.82);display:none;padding:18px}.queueEditShell{width:min(1500px,100%);height:calc(100vh - 36px);margin:auto;background:#fff;border-radius:12px;overflow:hidden;display:grid;grid-template-rows:auto 1fr;box-shadow:0 20px 60px rgba(0,0,0,.35)}.queueEditHeader{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:#f7f9fb}.queueEditBody{display:grid;grid-template-columns:minmax(420px,1.05fr) minmax(520px,.95fr);min-height:0}.queueTicketPane{background:#222;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:18px}.queueTicketPane img{display:block;max-width:100%;height:auto;transform-origin:top center}.queueEditFormPane{overflow:auto;padding:16px}.queueEditFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.queueEditField label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}.queueEditField input,.queueEditField textarea{width:100%;border:1px solid var(--line);border-radius:7px;padding:9px;background:#fff}.queueEditField textarea{min-height:62px}.queueEditActions{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 0 2px;margin-top:14px;display:flex;gap:10px;justify-content:flex-end}.manualEditNotice{background:#eef5ff;border:1px solid #c8d9ee;color:#304d6d;padding:9px 11px;border-radius:8px;font-size:12px;margin-bottom:12px}@media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}.advanced{grid-template-columns:repeat(2,1fr)}.queueEditBody{grid-template-columns:1fr;grid-template-rows:minmax(280px,45vh) 1fr}.queueEditFields{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.fields,.advanced,.queueEditFields{grid-template-columns:1fr}.wide{grid-column:auto}.queueEditModal{padding:0}.queueEditShell{height:100vh;border-radius:0}}
   .loginGate{position:fixed;inset:0;z-index:9999;background:#f4f6f8;display:flex;align-items:flex-start;justify-content:center;padding:8vh 16px}.loginCard{width:min(430px,100%);background:white;border:1px solid #d9e0e6;border-radius:12px;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.08)}.loginCard input{width:100%;padding:11px;border:1px solid #d9e0e6;border-radius:8px;margin:5px 0 10px}.loginCard h2{margin-top:0}.signedInBar{position:fixed;right:12px;top:12px;z-index:100;background:#fff;color:#17202a;border-radius:8px;padding:7px 9px;font-size:11px;box-shadow:0 1px 4px #0002}.signedInBar button{padding:5px 7px;margin-left:6px}.accountSave{font-size:11px;color:#65717d;margin-top:6px}
   .formatCard{margin-top:14px;border-top:1px solid var(--line);padding-top:14px}
 #formatPanel{position:fixed;inset:2vh 2vw;z-index:8000;background:#f7f8fa;border:1px solid #aeb9c4;border-radius:14px;box-shadow:0 18px 70px rgba(0,0,0,.35);padding:14px;overflow:hidden}
@@ -150,6 +150,34 @@ body.formatOpen{overflow:hidden}
     <div class="footerNote">Export target: the workbook's <b>Tickets</b> sheet (A:BJ). Moisture values are exported as decimal fractions (for example, 0.50% is written as 0.00500). The export is made self-contained: external workbook references are converted to internal sheet references where possible, external-link packages are removed, and Excel is forced to recalculate using only data and formulas inside the downloaded workbook.</div>
   </section>
 </main>
+
+<div id="queueEditModal" class="queueEditModal" aria-hidden="true">
+  <div class="queueEditShell">
+    <div class="queueEditHeader">
+      <div><strong>Edit queued ticket</strong><div id="queueEditTitle" class="selectorHelp">Manual verification and correction</div></div>
+      <div class="row">
+        <button id="queueEditZoomOut" class="secondary">− Zoom</button>
+        <button id="queueEditZoomIn" class="secondary">+ Zoom</button>
+        <button id="queueEditZoomReset" class="secondary">Reset</button>
+        <button id="queueEditClose" class="secondary">Cancel</button>
+      </div>
+    </div>
+    <div class="queueEditBody">
+      <div id="queueTicketPane" class="queueTicketPane">
+        <img id="queueEditImage" alt="Original queued ticket">
+      </div>
+      <div class="queueEditFormPane">
+        <div class="manualEditNotice">Use the original ticket on the left as the source of truth. Values saved from this screen are marked as manually verified and will not be overwritten by later OCR re-extraction.</div>
+        <div id="queueEditSourceStatus" class="status" style="margin:0 0 10px"></div>
+        <div id="queueEditFields" class="queueEditFields"></div>
+        <div class="queueEditActions">
+          <button id="queueEditCancel" class="secondary">Cancel</button>
+          <button id="queueEditSave">Save changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
 'use strict';
 
@@ -301,6 +329,7 @@ const MATERIALS = {
 
 let workbookBuffer = null, workbookName = '', workbookMeta = null;
 let photoDataUrl = null, rotation = 0, queue = [], lastDetected = {}, fieldReviewState = {};
+let queueEditIndex = null, queueEditScale = 1;
 let ocrWorker = null, ticketSourceFile = null;
 let pdfJs = null, pdfDoc = null, pdfPageNumber = 1, pdfPageCount = 0, pdfPageResults = new Map();
 let areaLayouts=[],activeLayout={id:null,name:'',regions:[],material_rows:{},anchors:{}},defineTarget=null,pendingRect=null,selectorScale=1;
@@ -1170,19 +1199,73 @@ async function reextractQueuedTicketsWithActiveLayout(){
     return {updated,skipped,failed};
   }finally{if(btn)btn.disabled=false}
 }
+function renderQueueEditFields(ticket){
+  const box=$('queueEditFields');box.innerHTML='';
+  for(const d of FIELD_DEFS){
+    const wrap=document.createElement('div');wrap.className='queueEditField'+(d.key==='issues'?' full':'');
+    const label=document.createElement('label');label.textContent=d.label;
+    const input=d.key==='issues'?document.createElement('textarea'):document.createElement('input');
+    input.id='qe_'+d.key;input.dataset.key=d.key;input.autocomplete='off';
+    if(d.type==='number'&&input.tagName==='INPUT'){input.type='number';input.step='any'}
+    let v=ticket?.[d.key]??'';
+    if(isMoistureField(d.key)&&v!==''&&Number.isFinite(Number(v)))v=Number(v).toFixed(2);
+    input.value=v;
+    wrap.append(label,input);box.appendChild(wrap);
+  }
+}
+function applyQueueEditZoom(){
+  const img=$('queueEditImage');if(!img)return;img.style.width=(queueEditScale*100)+'%';img.style.maxWidth=queueEditScale<=1?'100%':'none';
+}
+function closeQueueEditor(){
+  $('queueEditModal').style.display='none';$('queueEditModal').setAttribute('aria-hidden','true');
+  document.body.style.overflow='';queueEditIndex=null;queueEditScale=1;$('queueEditImage').src='';
+}
 async function editQueuedTicket(index){
   const t=queue[index];if(!t)return;
+  queueEditIndex=index;queueEditScale=1;renderQueueEditFields(t);
+  $('queueEditTitle').textContent=(t.ticket?'Ticket '+t.ticket:'Queued ticket')+' · row '+(index+1);
   const src=await loadQueueSource(t._sourceId).catch(()=>null);
-  if(src?.dataUrl){photoDataUrl=src.dataUrl;formatReferenceDataUrl=src.dataUrl;$('preview').src=src.dataUrl;$('previewWrap').style.display='block';setSelectorImage(src.dataUrl)}
-  fieldReviewState={};clearDetectedHints();
-  FIELD_DEFS.forEach(d=>{
-    const v=t[d.key]??'',m=t._fieldMeta?.[d.key],status=t._verification?.[d.key]||(v!==''?'manual':'');
-    if(v!=='')setField(d.key,v,m?.source||'Queued value',m?.confidence??null,m?.rawText||'',m?.rect||null,status);
-    else{$('f_'+d.key).value='';updateFieldReviewUI(d.key)}
-  });
-  queue.splice(index,1);persistQueue();renderQueue();
-  window.scrollTo({top:$('fields').getBoundingClientRect().top+window.scrollY-20,behavior:'smooth'});
+  const img=$('queueEditImage'),status=$('queueEditSourceStatus');
+  if(src?.dataUrl){
+    img.src=src.dataUrl;img.style.display='block';status.innerHTML='<span class="ok">Original ticket loaded. Enter corrections directly from the ticket image.</span>';
+  }else{
+    img.removeAttribute('src');img.style.display='none';status.innerHTML='<span class="error">The original ticket image is not available on this device for this older queue item. You can still edit the stored values, but visual verification is unavailable.</span>';
+  }
+  applyQueueEditZoom();
+  $('queueEditModal').style.display='block';$('queueEditModal').setAttribute('aria-hidden','false');document.body.style.overflow='hidden';
+  setTimeout(()=>{const first=$('qe_ticket');if(first)first.focus()},50);
 }
+function formQueueEditTicket(){
+  const obj={};
+  for(const d of FIELD_DEFS){
+    const el=$('qe_'+d.key);let v=(el?.value||'').trim();
+    if(v==='')obj[d.key]='';
+    else if(d.type==='number'){const n=Number(v.replace(/,/g,''));obj[d.key]=Number.isFinite(n)?n:v}
+    else obj[d.key]=v;
+  }
+  return obj;
+}
+async function saveQueuedTicketEdit(){
+  const index=queueEditIndex;if(index==null||!queue[index])return;
+  const old=queue[index],edited=formQueueEditTicket(),errs=validateTicket(edited);
+  if(errs.length&&!confirm(errs.join('\n')+'\n\nSave these edits anyway?'))return;
+  const updated={...old,...edited};
+  updated._verification={...(old._verification||{})};
+  updated._fieldMeta={...(old._fieldMeta||{})};
+  for(const d of FIELD_DEFS){
+    if(edited[d.key]!==''&&edited[d.key]!=null){
+      updated._verification[d.key]='manual';
+      updated._fieldMeta[d.key]={...(updated._fieldMeta[d.key]||{}),source:'Manual queue edit',confidence:null,reviewRequired:false};
+    }else{
+      delete updated._verification[d.key];
+      if(updated._fieldMeta[d.key])updated._fieldMeta[d.key]={...updated._fieldMeta[d.key],source:'Manual queue edit · cleared',reviewRequired:false};
+    }
+  }
+  updated._unverifiedCount=0;updated._reviewRequired=0;updated._manuallyEditedAt=new Date().toISOString();
+  queue[index]=updated;persistQueue();renderQueue();closeQueueEditor();
+  $('exportStatus').innerHTML='<span class="ok">Ticket '+escapeHtml(updated.ticket||String(index+1))+' saved as manually verified.</span>';
+}
+
 async function defineLayoutFromQueued(index){
   const t=queue[index];if(!t)return;
   const src=await loadQueueSource(t._sourceId).catch(()=>null);
@@ -1262,7 +1345,7 @@ async function addQueue(){
 }
 function renderQueue(){
   const b=$('queueBody'); b.innerHTML=''; if(!queue.length){b.innerHTML='<tr><td colspan="11" style="color:var(--muted)">No tickets queued.</td></tr>';}
-  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><strong>${esc(t.ticket)}</strong><div class="selectorHelp">${t._extractionMode==='defined_layout'?'Defined layout'+(t._layoutName?' · '+esc(t._layoutName):''):'Generic OCR'}${t._unverifiedCount?' · '+t._unverifiedCount+' UNVERIFIED':''}${t._reviewRequired?' · '+t._reviewRequired+' OCR warning(s)':''}</div></td><td>${esc(t.load_size)}</td><td>${esc(t.coarse_name)} · ${esc(t.rock_batched)} · ${esc(t.rock_moisture)}%</td><td>${esc(t.fine_name)} · ${esc(t.sand_batched)} · ${esc(t.sand_moisture)}%</td><td>${esc(t.cement_name)} · ${esc(t.cement_batched)}</td><td>${esc(t.scm1_name)} · ${esc(t.flyash_batched)}</td><td>${esc(t.water_batched)}</td><td>${esc(t.wc_ratio_report)}</td><td>${esc(t.mix_code)}</td><td><button class="secondary" data-layout="${i}" style="padding:6px 8px">Define Layout</button> <button class="secondary" data-edit="${i}" style="padding:6px 8px">Edit</button> <button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
+  queue.forEach((t,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><strong>${esc(t.ticket)}</strong><div class="selectorHelp">${t._extractionMode==='defined_layout'?'Defined layout'+(t._layoutName?' · '+esc(t._layoutName):''):'Generic OCR'}${t._unverifiedCount?' · '+t._unverifiedCount+' UNVERIFIED':''}${t._reviewRequired?' · '+t._reviewRequired+' OCR warning(s)':''}</div></td><td>${esc(t.load_size)}</td><td>${esc(t.coarse_name)} · ${esc(t.rock_batched)} · ${esc(t.rock_moisture)}%</td><td>${esc(t.fine_name)} · ${esc(t.sand_batched)} · ${esc(t.sand_moisture)}%</td><td>${esc(t.cement_name)} · ${esc(t.cement_batched)}</td><td>${esc(t.scm1_name)} · ${esc(t.flyash_batched)}</td><td>${esc(t.water_batched)}</td><td>${esc(t.wc_ratio_report)}</td><td>${esc(t.mix_code)}</td><td><button class="secondary" data-layout="${i}" style="padding:6px 8px">Define Layout</button> <button class="secondary" data-edit="${i}" style="padding:6px 8px">View / Edit</button> <button class="danger" data-rm="${i}" style="padding:6px 8px">Remove</button></td>`;b.appendChild(tr);});
   b.querySelectorAll('[data-layout]').forEach(x=>x.onclick=()=>defineLayoutFromQueued(Number(x.dataset.layout)));
   b.querySelectorAll('[data-edit]').forEach(x=>x.onclick=()=>editQueuedTicket(Number(x.dataset.edit)));
   b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=async()=>{const i=Number(x.dataset.rm),t=queue[i];queue.splice(i,1);persistQueue();renderQueue();await deleteQueueSource(t?._sourceId).catch(()=>{})});
@@ -1425,6 +1508,12 @@ $('pdfPrev').onclick=()=>pdfDoc&&pdfPageNumber>1&&renderPdfPageData(pdfPageNumbe
 $('pdfNext').onclick=()=>pdfDoc&&pdfPageNumber<pdfPageCount&&renderPdfPageData(pdfPageNumber+1,true);
 $('pdfExtractAll').onclick=extractAllPdfPages;
 $('extractBtn').onclick=runOCR;$('reparseBtn').onclick=()=>applyParsed(parseTicketText($('ocrText').value));$('queueBtn').onclick=addQueue;$('clearBtn').onclick=()=>clearForm();$('clearQueueBtn').onclick=async()=>{if(confirm('Clear all queued tickets?')){const old=[...queue];queue=[];persistQueue();renderQueue();await clearQueueSources(old)}};$('exportBtn').onclick=exportWorkbook;
+$('queueEditClose').onclick=closeQueueEditor;$('queueEditCancel').onclick=closeQueueEditor;$('queueEditSave').onclick=saveQueuedTicketEdit;
+$('queueEditZoomIn').onclick=()=>{queueEditScale=Math.min(4,queueEditScale+.25);applyQueueEditZoom()};
+$('queueEditZoomOut').onclick=()=>{queueEditScale=Math.max(.5,queueEditScale-.25);applyQueueEditZoom()};
+$('queueEditZoomReset').onclick=()=>{queueEditScale=1;applyQueueEditZoom()};
+$('queueEditModal').addEventListener('click',e=>{if(e.target===$('queueEditModal'))closeQueueEditor()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('queueEditModal').style.display==='block')closeQueueEditor()});
 restoreQueue();renderFields();clearForm();$('queueBtn').disabled=false;renderQueue();restoreWorkbookTemplate();
 </script>
 </body>
