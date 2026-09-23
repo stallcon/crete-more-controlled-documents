@@ -135,7 +135,7 @@ body.formatOpen{overflow:hidden}
 
   <section class="card" style="margin-top:18px">
     <div class="step">Mix reference</div><h2>Mix Submittal Reference</h2>
-    <div class="notice">Save the design quantity for <b>one cubic yard</b> of each mix. The extractor will use the ticket Mix Code and delivered volume to calculate the expected batch quantity and use it as a reference when evaluating OCR results.</div>
+    <div class="notice">Save the design properties for <b>one cubic yard</b> of each mix. The extractor uses Mix Code and delivered volume to calculate expected batch quantities. Aggregate rows also store absorption, and the <b>Acceptable ± / yd³</b> value controls when a material quantity is flagged for review.</div>
     <div class="row" style="margin-top:12px">
       <select id="submittalSelect" style="min-width:220px;padding:9px;border:1px solid var(--line);border-radius:7px"><option value="">New submittal…</option></select>
       <input id="submittalMixCode" placeholder="Mix Code" style="min-width:150px;padding:9px;border:1px solid var(--line);border-radius:7px">
@@ -146,7 +146,7 @@ body.formatOpen{overflow:hidden}
     </div>
     <div class="tableWrap" style="max-height:520px;margin-top:12px">
       <table>
-        <thead><tr><th>Material</th><th>SG</th><th>Weight / yd³</th></tr></thead>
+        <thead><tr><th>Material</th><th>SG</th><th>Weight / yd³</th><th>Absorption %</th><th>Acceptable ± / yd³</th></tr></thead>
         <tbody id="submittalRows"></tbody>
       </table>
     </div>
@@ -167,7 +167,7 @@ body.formatOpen{overflow:hidden}
     <div class="notice" style="margin-top:12px">Each export uses a clean copy of your saved <b>Ticket Importer.xlsx</b> template. The <b>Tickets</b> sheet keeps row 1 headers, removes all prior ticket rows, writes only this queue starting at row 2, downloads the workbook, then clears the queue.</div>
     <div class="row" style="margin-top:14px"><button id="exportBtn" disabled>Export Ticket Importer.xlsx</button><button id="clearQueueBtn" class="danger" disabled>Clear queue</button></div>
     <div id="exportStatus" class="status"></div>
-    <div class="footerNote">Export target: the workbook's <b>Tickets</b> sheet. Submittal SG and Weight/yd³ reference columns are appended automatically to the right of the existing ticket columns. Moisture values are exported as decimal fractions (for example, 0.50% is written as 0.00500). The export is made self-contained: external workbook references are converted to internal sheet references where possible, external-link packages are removed, and Excel is forced to recalculate using only data and formulas inside the downloaded workbook.</div>
+    <div class="footerNote">Export target: the workbook's <b>Tickets</b> sheet. Submittal SG, Weight/yd³, aggregate Absorption %, and Acceptable ±/yd³ reference columns are appended automatically to the right of the existing ticket columns. Moisture values are exported as decimal fractions (for example, 0.50% is written as 0.00500). The export is made self-contained: external workbook references are converted to internal sheet references where possible, external-link packages are removed, and Excel is forced to recalculate using only data and formulas inside the downloaded workbook.</div>
   </section>
 </main>
 
@@ -324,6 +324,7 @@ const SUBMITTAL_MATERIAL_ROWS=[
   ['wr','Water Reducer'],['air','Air Entrainment'],['agg3','Aggregate #3'],['agg4','Aggregate #4'],
   ['scm2','SCM #2'],['scm3','SCM #3'],['admix3','Admix #3'],['admix4','Admix #4'],['admix5','Admix #5']
 ];
+const SUBMITTAL_AGGREGATE_KEYS=new Set(['coarse','fine','agg3','agg4']);
 const TICKET_HEADERS = ["Ticket #","Volume delivered","Coarse aggregate Name","Coarse aggregate Batched Qty","Coarse aggregate Moisture","Coarse aggregate Water","Fine Aggregate Name","Fine Aggregate Batched Qty","Fine Aggregate Moisture","Fine Aggregate Water","Cement Name","Cement Batched Qty","Cement Moisture","Cement Water","SCM #1 Name","SCM #1 Batched Qty","SCM #1 Moisture","SCM #1 Water","Water Name","Water Batched Qty","Water Moisture","Water Water","Total Water","Water Reducer Name","Water Reducer Batched Qty","Water Reducer Moisture","Water Reducer Water","Air Entrainment Name","Air Entrainment Batched Qty","Air Entrainment Moisture","Air Entrainment Water","Water/Cement Ratio","Loaded Weight","Aggregate #3 Name","Aggregate #3 Batched Qty","Aggregate #3 Moisture","Aggregate #3 Water","Aggregate #4 Name","Aggregate #4 Batched Qty","Aggregate #4 Moisture","Aggregate #4 Water","SCM #2 Name","SCM #2 Batched Qty","SCM #2 Moisture","SCM #2 Water","SCM #3 Name","SCM #3 Batched Qty","SCM #3 Moisture","SCM #3 Water","Admix #3 Name","Admix #3 Batched Qty","Admix #3 Moisture","Admix #3 Water","Admix #4 Name","Admix #4 Batched Qty","Admix #4 Moisture","Admix #4 Water","Admix #5 Name","Admix #5 Batched Qty","Admix #5 Moisture","Admix #5 Water","Mix Code"];
 const EXPORT_MAP = {
   "Ticket #":['ticket','text'],"Volume delivered":['load_size','number'],
@@ -345,10 +346,17 @@ const EXPORT_MAP = {
   "Mix Code":['mix_code','text']
 }
 for(const [key,label] of SUBMITTAL_MATERIAL_ROWS){
-  const sgHeader=label+' SG',weightHeader=label+' Weight / yd³';
+  const sgHeader=label+' SG',weightHeader=label+' Weight / yd³',tolHeader=label+' Acceptable ± / yd³';
   TICKET_HEADERS.push(sgHeader,weightHeader);
   EXPORT_MAP[sgHeader]=['submittal_'+key+'_sg','number'];
   EXPORT_MAP[weightHeader]=['submittal_'+key+'_weight','number'];
+  if(SUBMITTAL_AGGREGATE_KEYS.has(key)){
+    const absHeader=label+' Absorption %';
+    TICKET_HEADERS.push(absHeader);
+    EXPORT_MAP[absHeader]=['submittal_'+key+'_absorption','number'];
+  }
+  TICKET_HEADERS.push(tolHeader);
+  EXPORT_MAP[tolHeader]=['submittal_'+key+'_tolerance','number'];
 }
 const MATERIALS = {
   rock: {aliases:['rock','stone','coarse aggregate','coarse agg','agg 1','aggregate 1','gravel']},
@@ -391,23 +399,34 @@ async function sbRest(path,opt={}){
 }
 function normalizedMixCode(v){return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'')}
 function emptySubmittalMaterials(){
-  const out={};for(const [key] of SUBMITTAL_MATERIAL_ROWS)out[key]={sg:'',weight:''};return out;
+  const out={};for(const [key] of SUBMITTAL_MATERIAL_ROWS)out[key]={sg:'',weight:'',absorption:'',tolerance:''};return out;
 }
 function renderSubmittalRows(materials={}){
   const b=$('submittalRows');if(!b)return;b.innerHTML='';
   for(const [key,label] of SUBMITTAL_MATERIAL_ROWS){
-    const m=materials?.[key]||{},tr=document.createElement('tr');
+    const m=materials?.[key]||{},tr=document.createElement('tr'),isAgg=SUBMITTAL_AGGREGATE_KEYS.has(key);
+    const absorptionCell=isAgg
+      ?'<input id="sub_abs_'+key+'" type="number" step="0.01" min="0" value="'+esc(m.absorption??'')+'" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px">'
+      :'<span style="color:var(--muted)">—</span>';
     tr.innerHTML='<td><b>'+esc(label)+'</b></td>'+
       '<td><input id="sub_sg_'+key+'" type="number" step="0.001" min="0" value="'+esc(m.sg??'')+'" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px"></td>'+
-      '<td><input id="sub_wt_'+key+'" type="number" step="0.01" value="'+esc(m.weight??'')+'" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px"></td>';
+      '<td><input id="sub_wt_'+key+'" type="number" step="0.01" value="'+esc(m.weight??'')+'" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px"></td>'+
+      '<td>'+absorptionCell+'</td>'+
+      '<td><input id="sub_tol_'+key+'" type="number" step="0.01" min="0" value="'+esc(m.tolerance??'')+'" placeholder="± per yd³" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px"></td>';
     b.appendChild(tr);
   }
 }
 function readSubmittalMaterials(){
   const out={};
   for(const [key] of SUBMITTAL_MATERIAL_ROWS){
-    const sg=$('sub_sg_'+key)?.value.trim()||'',wt=$('sub_wt_'+key)?.value.trim()||'';
-    out[key]={sg:sg===''?'':Number(sg),weight:wt===''?'':Number(wt)};
+    const sg=$('sub_sg_'+key)?.value.trim()||'',wt=$('sub_wt_'+key)?.value.trim()||'',tol=$('sub_tol_'+key)?.value.trim()||'';
+    const abs=SUBMITTAL_AGGREGATE_KEYS.has(key)?($('sub_abs_'+key)?.value.trim()||''):'';
+    out[key]={
+      sg:sg===''?'':Number(sg),
+      weight:wt===''?'':Number(wt),
+      absorption:abs===''?'':Number(abs),
+      tolerance:tol===''?'':Math.abs(Number(tol))
+    };
   }
   return out;
 }
@@ -418,7 +437,7 @@ function renderSubmittalSelect(){
 }
 function clearSubmittalForm(){
   activeSubmittalId=null;$('submittalSelect').value='';$('submittalMixCode').value='';$('submittalName').value='';renderSubmittalRows(emptySubmittalMaterials());
-  $('submittalStatus').textContent='Enter the design SG and weight per cubic yard, then save by Mix Code.';
+  $('submittalStatus').textContent='Enter design SG, weight per yd³, aggregate absorption, and acceptable ± per yd³, then save by Mix Code.';
 }
 function selectTicketSubmittal(id){
   const s=ticketSubmittals.find(x=>x.id===id);activeSubmittalId=s?.id||null;
@@ -465,38 +484,61 @@ function applySubmittalSnapshot(ticket){
     const m=s?.materials?.[key]||{};
     ticket['submittal_'+key+'_sg']=m.sg??'';
     ticket['submittal_'+key+'_weight']=m.weight??'';
+    ticket['submittal_'+key+'_absorption']=SUBMITTAL_AGGREGATE_KEYS.has(key)?(m.absorption??''):'';
+    ticket['submittal_'+key+'_tolerance']=m.tolerance??'';
   }
   return ticket;
 }
 function expectedBatchFromSubmittal(key,mixCode,volume){
   const info=materialSlotForField(key);if(!info||info.slot!=='batched')return null;
-  const s=findTicketSubmittal(mixCode),w=Number(s?.materials?.[info.mat]?.weight),v=Number(volume);
+  const s=findTicketSubmittal(mixCode),m=s?.materials?.[info.mat]||{},w=Number(m.weight),v=Number(volume),tol=Number(m.tolerance);
   if(!s||!Number.isFinite(w)||!Number.isFinite(v)||w===0||v<=0)return null;
-  return{submittal:s,material:info.mat,perYard:w,total:w*v};
+  return{submittal:s,material:info.mat,perYard:w,total:w*v,tolerancePerYard:Number.isFinite(tol)?Math.abs(tol):null,allowedTotal:Number.isFinite(tol)?Math.abs(tol)*v:null};
 }
 function applySubmittalGuidance(parsed){
-  const mixCode=parsed.mix_code?.value,volume=parsed.load_size?.value,s=findTicketSubmittal(mixCode);
-  if(!s||!Number.isFinite(Number(volume))||Number(volume)<=0)return null;
+  const mixCode=parsed.mix_code?.value,volume=Number(parsed.load_size?.value),s=findTicketSubmittal(mixCode);
+  if(!s||!Number.isFinite(volume)||volume<=0)return null;
   for(const [mat] of SUBMITTAL_MATERIAL_ROWS){
-    const key=MATERIAL_FIELD_KEYS[mat]?.batched,perYard=Number(s.materials?.[mat]?.weight);
+    const key=MATERIAL_FIELD_KEYS[mat]?.batched,m=s.materials?.[mat]||{},perYard=Number(m.weight),tolPerYard=Number(m.tolerance);
     if(!key||!Number.isFinite(perYard)||perYard===0)continue;
     const field=parsed[key];if(!field)continue;
-    const expected=perYard*Number(volume),candidates=[];
-    const add=(value,confidence,source,parsedMeta)=>{const n=Number(value);if(Number.isFinite(n)&&!candidates.some(x=>x.value===n))candidates.push({value:n,confidence:Number(confidence||0),source,parsedMeta})};
-    add(field.value,field.confidence,'current',null);
-    for(const a of field.ocrAttempts||[])if(a?.parsed)add(a.parsed.value,a.confidence,a.variant,a.parsed);
+    const expected=perYard*volume,hasTol=Number.isFinite(tolPerYard)&&tolPerYard>=0,allowedTotal=hasTol?Math.abs(tolPerYard)*volume:null,candidates=[];
+    const add=(value,confidence,source)=>{const n=Number(value);if(Number.isFinite(n)&&!candidates.some(x=>x.value===n))candidates.push({value:n,confidence:Number(confidence||0),source})};
+    add(field.value,field.confidence,'current');
+    for(const a of field.ocrAttempts||[])if(a?.parsed)add(a.parsed.value,a.confidence,a.variant);
     if(!candidates.length)continue;
+
+    // Use the design quantity as a reference to break OCR ties, but only choose a replacement
+    // when it is materially closer than the current read.
     candidates.sort((a,b)=>Math.abs(a.value-expected)-Math.abs(b.value-expected));
-    const best=candidates[0],current=Number(field.value),bestErr=Math.abs(best.value-expected)/Math.max(Math.abs(expected),1),curErr=Math.abs(current-expected)/Math.max(Math.abs(expected),1);
-    if(bestErr<=.25&&bestErr+.04<curErr){
+    const best=candidates[0],current=Number(field.value),bestDelta=Math.abs(best.value-expected),currentDelta=Math.abs(current-expected);
+    const improvement=currentDelta-bestDelta;
+    const meaningfulImprovement=hasTol ? improvement>Math.max(1,allowedTotal*.25) : improvement>Math.max(2,Math.abs(expected)*.04);
+    const plausibleBest=hasTol ? bestDelta<=Math.max(allowedTotal*2,1) : bestDelta<=Math.max(Math.abs(expected)*.25,1);
+    if(best.value!==current&&meaningfulImprovement&&plausibleBest){
       field.value=best.value;field.confidence=Math.max(field.confidence||0,best.confidence||0);
       field.source='Submittal-guided OCR · '+perYard+' / yd³ × '+volume+' yd³ = '+Number(expected.toFixed(2))+' expected';
-      field.reviewRequired=bestErr>.15;field.autoVerified=false;
+      field.autoVerified=false;
     }
-    const finalErr=Math.abs(Number(field.value)-expected)/Math.max(Math.abs(expected),1);
-    field.submittalExpected=expected;field.submittalPerYard=perYard;field.submittalVariancePct=finalErr*100;
-    if(finalErr>.30){field.reviewRequired=true;field.autoVerified=false;field.source=(field.source||'OCR')+' · '+(finalErr*100).toFixed(1)+'% from submittal reference'}
-    else if(finalErr<=.15){field.source=(field.source||'OCR')+' · submittal reference within '+(finalErr*100).toFixed(1)+'%'}
+
+    const finalValue=Number(field.value),finalDelta=Math.abs(finalValue-expected);
+    field.submittalExpected=expected;
+    field.submittalPerYard=perYard;
+    field.submittalTolerancePerYard=hasTol?Math.abs(tolPerYard):null;
+    field.submittalAllowedTotal=allowedTotal;
+    field.submittalDeviation=finalValue-expected;
+    field.submittalDeviationPerYard=(finalValue-expected)/volume;
+
+    if(hasTol){
+      if(finalDelta>allowedTotal){
+        field.reviewRequired=true;field.autoVerified=false;
+        field.source=(field.source||'OCR')+' · OUTSIDE ±'+Math.abs(tolPerYard)+' / yd³ (allowed ±'+Number(allowedTotal.toFixed(2))+' total)';
+      }else{
+        field.source=(field.source||'OCR')+' · within ±'+Math.abs(tolPerYard)+' / yd³ submittal tolerance';
+      }
+    }else{
+      field.source=(field.source||'OCR')+' · submittal reference '+perYard+' / yd³ (no ± tolerance set)';
+    }
   }
   return s;
 }
