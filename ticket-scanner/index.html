@@ -477,6 +477,35 @@ function findTicketSubmittal(mixCode){
   const n=normalizedMixCode(mixCode);if(!n)return null;
   return ticketSubmittals.find(x=>normalizedMixCode(x.mix_code)===n)||null;
 }
+function optionalNumber(v){
+  if(v===null||v===undefined||v==='')return null;
+  const n=Number(v);return Number.isFinite(n)?n:null;
+}
+function submittalExpectedForMaterial(mat,parsed,s,volume){
+  const m=s?.materials?.[mat]||{},design=optionalNumber(m.weight);
+  if(design===null||design===0||!Number.isFinite(volume)||volume<=0)return null;
+  let expectedPerYard=design,moisture=null,absorption=null,conditioned=false;
+  if(SUBMITTAL_AGGREGATE_KEYS.has(mat)){
+    const moistureKey=MATERIAL_FIELD_KEYS[mat]?.moisture;
+    moisture=optionalNumber(parsed?.[moistureKey]?.value);
+    absorption=optionalNumber(m.absorption);
+    if(moisture!==null&&absorption!==null&&1+absorption/100>0){
+      // Submittal aggregate weight is SSD. Convert SSD design weight to the
+      // actual aggregate moisture condition on the ticket.
+      expectedPerYard=design*((1+moisture/100)/(1+absorption/100));
+      conditioned=true;
+    }
+  }
+  const tol=optionalNumber(m.tolerance);
+  return{
+    designPerYard:design,
+    expectedPerYard,
+    expectedTotal:expectedPerYard*volume,
+    tolerancePerYard:tol===null?null:Math.abs(tol),
+    allowedTotal:tol===null?null:Math.abs(tol)*volume,
+    moisture,absorption,conditioned
+  };
+}
 function applySubmittalSnapshot(ticket){
   const s=findTicketSubmittal(ticket?.mix_code);
   ticket._submittalId=s?.id||null;ticket._submittalName=s?.name||'';ticket._submittalMixCode=s?.mix_code||'';
@@ -489,20 +518,21 @@ function applySubmittalSnapshot(ticket){
   }
   return ticket;
 }
-function expectedBatchFromSubmittal(key,mixCode,volume){
+function expectedBatchFromSubmittal(key,mixCode,volume,parsed=null){
   const info=materialSlotForField(key);if(!info||info.slot!=='batched')return null;
-  const s=findTicketSubmittal(mixCode),m=s?.materials?.[info.mat]||{},w=Number(m.weight),v=Number(volume),tol=Number(m.tolerance);
-  if(!s||!Number.isFinite(w)||!Number.isFinite(v)||w===0||v<=0)return null;
-  return{submittal:s,material:info.mat,perYard:w,total:w*v,tolerancePerYard:Number.isFinite(tol)?Math.abs(tol):null,allowedTotal:Number.isFinite(tol)?Math.abs(tol)*v:null};
+  const s=findTicketSubmittal(mixCode),v=Number(volume);
+  if(!s||!Number.isFinite(v)||v<=0)return null;
+  const ref=submittalExpectedForMaterial(info.mat,parsed||{},s,v);if(!ref)return null;
+  return{submittal:s,material:info.mat,perYard:ref.expectedPerYard,total:ref.expectedTotal,tolerancePerYard:ref.tolerancePerYard,allowedTotal:ref.allowedTotal,conditioned:ref.conditioned,moisture:ref.moisture,absorption:ref.absorption};
 }
 function applySubmittalGuidance(parsed){
   const mixCode=parsed.mix_code?.value,volume=Number(parsed.load_size?.value),s=findTicketSubmittal(mixCode);
   if(!s||!Number.isFinite(volume)||volume<=0)return null;
   for(const [mat] of SUBMITTAL_MATERIAL_ROWS){
-    const key=MATERIAL_FIELD_KEYS[mat]?.batched,m=s.materials?.[mat]||{},perYard=Number(m.weight),tolPerYard=Number(m.tolerance);
-    if(!key||!Number.isFinite(perYard)||perYard===0)continue;
-    const field=parsed[key];if(!field)continue;
-    const expected=perYard*volume,hasTol=Number.isFinite(tolPerYard)&&tolPerYard>=0,allowedTotal=hasTol?Math.abs(tolPerYard)*volume:null,candidates=[];
+    const key=MATERIAL_FIELD_KEYS[mat]?.batched,field=parsed[key];
+    if(!key||!field)continue;
+    const ref=submittalExpectedForMaterial(mat,parsed,s,volume);if(!ref)continue;
+    const expected=ref.expectedTotal,hasTol=ref.tolerancePerYard!==null,allowedTotal=ref.allowedTotal,candidates=[];
     const add=(value,confidence,source)=>{const n=Number(value);if(Number.isFinite(n)&&!candidates.some(x=>x.value===n))candidates.push({value:n,confidence:Number(confidence||0),source})};
     add(field.value,field.confidence,'current');
     for(const a of field.ocrAttempts||[])if(a?.parsed)add(a.parsed.value,a.confidence,a.variant);
@@ -515,35 +545,40 @@ function applySubmittalGuidance(parsed){
     const plausibleBest=hasTol ? bestDelta<=Math.max(allowedTotal*2,1) : bestDelta<=Math.max(Math.abs(expected)*.25,1);
     if(best.value!==current&&meaningfulImprovement&&plausibleBest){
       field.value=best.value;field.confidence=Math.max(field.confidence||0,best.confidence||0);
-      field.source='Submittal-guided OCR · '+perYard+' / yd³ × '+volume+' yd³ = '+Number(expected.toFixed(2))+' expected';
-      field.autoVerified=false;
+      field.source='Submittal-guided OCR · '+Number(ref.expectedPerYard.toFixed(2))+' expected / yd³ × '+volume+' yd³';
     }
 
     const finalValue=Number(field.value),finalDelta=Math.abs(finalValue-expected);
     field.submittalExpected=expected;
-    field.submittalPerYard=perYard;
-    field.submittalTolerancePerYard=hasTol?Math.abs(tolPerYard):null;
+    field.submittalPerYard=ref.expectedPerYard;
+    field.submittalDesignPerYard=ref.designPerYard;
+    field.submittalTolerancePerYard=ref.tolerancePerYard;
     field.submittalAllowedTotal=allowedTotal;
     field.submittalDeviation=finalValue-expected;
     field.submittalDeviationPerYard=(finalValue-expected)/volume;
     field.submittalGuided=true;
+    field.submittalMoistureConditioned=ref.conditioned;
+    field.submittalMoisture=ref.moisture;
+    field.submittalAbsorption=ref.absorption;
 
     if(hasTol){
       field.submittalOutOfTolerance=finalDelta>allowedTotal;
       field.submittalWithinTolerance=!field.submittalOutOfTolerance;
-      // Submittal compliance controls review severity for material batch quantities.
-      // OCR confidence alone does not create a low-confidence flag when the value is inside tolerance.
       field.reviewRequired=field.submittalOutOfTolerance;
       if(field.submittalOutOfTolerance){
         field.autoVerified=false;
-        field.source=(field.source||'OCR')+' · OUTSIDE ±'+Math.abs(tolPerYard)+' / yd³ (allowed ±'+Number(allowedTotal.toFixed(2))+' total)';
+        field.source=(field.source||'OCR')+' · OUTSIDE ±'+ref.tolerancePerYard+' / yd³ (allowed ±'+Number(allowedTotal.toFixed(2))+' total)';
       }else{
-        field.source=(field.source||'OCR')+' · within ±'+Math.abs(tolPerYard)+' / yd³ submittal tolerance';
+        // If the material falls inside the user-defined acceptable range, accept it.
+        field.autoVerified=true;
+        const basis=ref.conditioned?'moisture-adjusted SSD reference':'submittal reference';
+        field.source=(field.source||'OCR')+' · AUTO ACCEPTED within ±'+ref.tolerancePerYard+' / yd³ '+basis;
       }
     }else{
       field.submittalOutOfTolerance=null;
       field.submittalWithinTolerance=null;
-      field.source=(field.source||'OCR')+' · submittal reference '+perYard+' / yd³ (no ± tolerance set)';
+      // No saved tolerance means do not create a submittal-based red flag.
+      field.source=(field.source||'OCR')+' · submittal reference available (no ± tolerance set)';
     }
   }
   return s;
@@ -1066,9 +1101,9 @@ async function retryOutsideSubmittalFields(worker,dataUrl,parsed,mappedRects){
   let recovered=0;
   for(const [mat] of SUBMITTAL_MATERIAL_ROWS){
     const key=MATERIAL_FIELD_KEYS[mat]?.batched,field=parsed[key],mapped=mappedRects[key];
-    const m=s.materials?.[mat]||{},perYard=Number(m.weight),tolPerYard=Number(m.tolerance);
-    if(!key||!field||!mapped||field.submittalOutOfTolerance!==true||!Number.isFinite(perYard)||!Number.isFinite(tolPerYard)||tolPerYard<0)continue;
-    const expected=perYard*volume,allowedTotal=Math.abs(tolPerYard)*volume;
+    const ref=submittalExpectedForMaterial(mat,parsed,s,volume);
+    if(!key||!field||!mapped||field.submittalOutOfTolerance!==true||!ref||ref.tolerancePerYard===null)continue;
+    const expected=ref.expectedTotal,allowedTotal=ref.allowedTotal,tolPerYard=ref.tolerancePerYard;
     const all=numericAttemptCandidates(field);
     const passes=[
       {x:.06,y:.18,label:'expanded +6%/+18%'},
@@ -1108,8 +1143,8 @@ async function retryOutsideSubmittalFields(worker,dataUrl,parsed,mappedRects){
       field.autoVerified=false;
       field.source=(field.source||'OCR')+' · still OUTSIDE ±'+Math.abs(tolPerYard)+' / yd³ after expanded OCR retries';
     }else{
-      recovered++;
-      field.source=(field.source||'OCR')+' · recovered inside ±'+Math.abs(tolPerYard)+' / yd³ tolerance';
+      recovered++;field.autoVerified=true;
+      field.source=(field.source||'OCR')+' · AUTO ACCEPTED after expanded OCR retry inside ±'+Math.abs(tolPerYard)+' / yd³ tolerance';
     }
   }
   return recovered;
@@ -1581,7 +1616,7 @@ function ticketFromParsed(parsed){
   FIELD_DEFS.forEach(d=>{
     const x=parsed[d.key];out[d.key]=x&&x.value!==undefined&&x.value!==null?x.value:'';
     if(x){
-      meta[d.key]={confidence:x.confidence??null,rawText:x.rawText??'',source:x.source??'',reviewRequired:!!x.reviewRequired,rect:x.rect||null,engine:x.engine||'',autoVerified:!!x.autoVerified,submittalGuided:!!x.submittalGuided,submittalOutOfTolerance:x.submittalOutOfTolerance===true,submittalExpected:x.submittalExpected??null,submittalAllowedTotal:x.submittalAllowedTotal??null,submittalDeviation:x.submittalDeviation??null,submittalDeviationPerYard:x.submittalDeviationPerYard??null};
+      meta[d.key]={confidence:x.confidence??null,rawText:x.rawText??'',source:x.source??'',reviewRequired:!!x.reviewRequired,rect:x.rect||null,engine:x.engine||'',autoVerified:!!x.autoVerified,submittalGuided:!!x.submittalGuided,submittalOutOfTolerance:x.submittalOutOfTolerance===true,submittalExpected:x.submittalExpected??null,submittalAllowedTotal:x.submittalAllowedTotal??null,submittalDeviation:x.submittalDeviation??null,submittalDeviationPerYard:x.submittalDeviationPerYard??null,submittalMoistureConditioned:!!x.submittalMoistureConditioned,submittalMoisture:x.submittalMoisture??null,submittalAbsorption:x.submittalAbsorption??null};
       if(out[d.key]!==''&&out[d.key]!=null){verification[d.key]=x.autoVerified?'verified':'unverified';if(!x.autoVerified)unverified++}
       if(x.reviewRequired)review++;
     }
@@ -1646,7 +1681,7 @@ function ticketLowConfidenceKeys(t){
 }
 function ticketUnverifiedKeys(t){
   if(t?._manuallyVerified)return[];
-  return populatedTicketKeys(t).filter(key=>t?._verification?.[key]==='unverified');
+  return populatedTicketKeys(t).filter(key=>t?._verification?.[key]==='unverified'&&t?._fieldMeta?.[key]?.submittalOutOfTolerance!==false);
 }
 function ticketNeedsReview(t){
   return !t?._manuallyVerified&&(ticketUnverifiedKeys(t).length>0||ticketLowConfidenceKeys(t).length>0);
@@ -1656,7 +1691,7 @@ function ticketHasLowConfidence(t){
 }
 function queueFieldMarkup(t,key,value,suffix=''){
   const v=esc(value),m=t?._fieldMeta?.[key],unverified=!t?._manuallyVerified&&t?._verification?.[key]==='unverified';
-  const low=!t?._manuallyVerified&&m&&(m.reviewRequired===true||(m.confidence!=null&&Number(m.confidence)<72));
+  const low=!t?._manuallyVerified&&m?.submittalOutOfTolerance===true;
   if(low)return'<span class="queueWarnValue" title="Outside acceptable submittal range">'+v+suffix+'</span>';
   if(unverified)return'<span class="queueUnverifiedValue" title="Unverified OCR">'+v+suffix+'</span>';
   return v+suffix;
